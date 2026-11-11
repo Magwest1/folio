@@ -16,7 +16,7 @@
   try {
     var out = document.getElementById('release-info');
     if (out && window.fetch) {
-      fetch('https://api.github.com/repos/MagnusOlstad/folio/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+      fetch('https://api.github.com/repos/magwest1/folio/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (d) {
           if (!d || !d.tag_name) return;

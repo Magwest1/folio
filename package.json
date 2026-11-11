@@ -8,7 +8,7 @@
   "main": "electron/main.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MagnusOlstad/folio.git"
+    "url": "https://github.com/magwest1/folio.git"
   },
   "scripts": {
     "dev": "concurrently -k -n web,api -c blue,green \"npm:dev:web\" \"npm:dev:api\"",
@@ -121,7 +121,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "MagnusOlstad",
+      "owner": "magwest1",
       "repo": "folio"
     }
   },

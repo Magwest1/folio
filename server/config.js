@@ -48,7 +48,7 @@ export function createConfig(env = process.env) {
     askContextLength: Number.isFinite(configuredAskContextLength)
       ? Math.max(4096, Math.floor(configuredAskContextLength))
       : 8192,
-    updateRepo: env.FOLIO_UPDATE_REPO || 'MagnusOlstad/folio',
+    updateRepo: env.FOLIO_UPDATE_REPO || 'magwest1/folio',
     updateCheckTtl: 6 * 60 * 60 * 1000,
     appVersion: env.FOLIO_VERSION || readPackageVersion(projectRoot),
     port: Number(env.PORT || 8787),
