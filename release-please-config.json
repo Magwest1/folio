@@ -7,5 +7,6 @@
       "draft": true,
       "force-tag-creation": true
     }
-  }
+  },
+  "bootstrap-sha": "363e5f4db38bd08cbdd0a20c1ebf6f41b62a004e"
 }
