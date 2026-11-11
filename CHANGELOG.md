@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/Magwest1/folio/compare/v0.11.0...v0.11.1) (2026-11-11)
+
+
+### Bug Fixes
+
+* move repository to magwest1 ([#1](https://github.com/Magwest1/folio/issues/1)) ([5e29d3c](https://github.com/Magwest1/folio/commit/5e29d3ce9d41cdf84abff828697d257d47083122))
+
 ## [0.11.0](https://github.com/MagnusOlstad/folio/compare/v0.10.0...v0.11.0) (2026-11-11)
 
 
