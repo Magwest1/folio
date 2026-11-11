@@ -1,0 +1,1151 @@
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TranscriptionDock } from "../../src/features/transcription/components/TranscriptionDock.tsx";
+import { mergeTranscriptionDraft, type TranscriptionSession } from "../../src/features/transcription/model/types.ts";
+import type {
+  TranscriptionDockActions,
+  TranscriptionDockModel,
+} from "../../src/features/transcription/hooks/useTranscription.ts";
+import { useTranscription } from "../../src/features/transcription/hooks/useTranscription.ts";
+import { useAudioRecorder } from "../../src/features/transcription/hooks/useAudioRecorder.ts";
+import { audioDuration } from "../../src/features/transcription/model/audio-duration.ts";
+
+const { apiMock, apiForBundleMock } = vi.hoisted(() => ({ apiMock: vi.fn(), apiForBundleMock: vi.fn() }));
+vi.mock("../../src/lib/api.ts", () => ({ api: apiMock, apiForBundle: apiForBundleMock }));
+
+function model(overrides: Partial<TranscriptionDockModel> = {}): TranscriptionDockModel {
+  return {
+    phase: "idle",
+    activeSession: null,
+    pending: [],
+    status: null,
+    progress: "",
+    error: "",
+    deletingSessionId: null,
+    recording: { phase: "idle", duration: "0:00", error: "", saving: false, source: "microphone", systemAudioSupported: false, systemAudioBlocked: false, levels: { mic: 0, system: 0 }, silent: { mic: false, system: false } },
+    hasOpenDraftFor: () => false,
+    audioUrlFor: (item) => `/api/transcriptions/${item.id}/audio`,
+    ...overrides,
+  };
+}
+
+function actions(): TranscriptionDockActions {
+  return {
+    importFile: vi.fn(),
+    startRecording: vi.fn(),
+    setRecordingSource: vi.fn(),
+    stopRecording: vi.fn(),
+    discardRecording: vi.fn(),
+    retryRecording: vi.fn(),
+    installModel: vi.fn(),
+    installSpeakerModel: vi.fn(),
+    transcribe: vi.fn(),
+    retranscribe: vi.fn(),
+    cancel: vi.fn(),
+    openTranscript: vi.fn(),
+    regenerateSummary: vi.fn(),
+    deleteSession: vi.fn(async () => undefined),
+    loadResult: vi.fn(async () => null),
+    reassignSpeaker: vi.fn(), splitSegment: vi.fn(), mergeSegment: vi.fn(), mergeSpeakers: vi.fn(), renameSpeaker: vi.fn(async () => ({ summary: '', transcript: '' })),
+  };
+}
+
+function openMenu(fileName = "meeting.wav") {
+  fireEvent.click(screen.getByRole("button", { name: `More actions for ${fileName}` }));
+}
+
+function menuItem(name: string | RegExp, role: "menuitem" | "menuitemcheckbox" = "menuitem") {
+  return screen.getByRole(role, { name });
+}
+
+const status = {
+  modelId: "whisper" as const,
+  modelName: "Whisper Large v3 Turbo",
+  model: "mlx-community/whisper-large-v3-turbo",
+  revision: "pinned",
+  available: true,
+  helperAvailable: true,
+  modelState: "missing" as const,
+  downloadedBytes: 0,
+  totalBytes: 1_610_000_000,
+  downloadPercent: 0,
+  canInstall: true,
+  canTranscribe: false,
+  installing: false,
+};
+
+const speakerStatus = {
+  modelId: "sortformer" as const,
+  modelName: "Sortformer Speaker Labels",
+  model: "mlx-community/diar_streaming_sortformer_4spk-v2.1-fp16",
+  maxSpeakers: 4,
+  modelState: "missing" as const,
+  downloadedBytes: 0,
+  totalBytes: 250_000_000,
+  downloadPercent: 0,
+  canInstall: true,
+  canDiarize: false,
+  installing: false,
+};
+const readyStatus = { ...status, modelState: "ready" as const, canTranscribe: true, downloadPercent: 100, downloadedBytes: status.totalBytes };
+
+const session: TranscriptionSession = {
+  id: "11111111-1111-4111-8111-111111111111",
+  state: "ready",
+  draftId: "notes/meeting.md",
+  durationMs: 61_000,
+  error: null,
+  fileName: "meeting.wav",
+  source: "file",
+  sourceBundleId: "bundle-a",
+  createdAt: "2026-10-02T10:00:00.000Z",
+};
+
+describe("transcription UI", () => {
+  beforeEach(() => { apiMock.mockReset(); apiForBundleMock.mockReset(); });
+
+  it("detaches failed metadata handlers before clearing the audio source", async () => {
+    const assignedSources: string[] = [];
+    let deliveredErrorHandlers = 0;
+    class ErroringAudio {
+      preload = "";
+      duration = Number.NaN;
+      onloadedmetadata: ((event: Event) => unknown) | null = null;
+      onerror: ((event: Event) => unknown) | null = null;
+      private source = "";
+
+      set src(value: string) {
+        this.source = value;
+        assignedSources.push(value);
+        queueMicrotask(() => {
+          if (!this.onerror || deliveredErrorHandlers >= 3) return;
+          deliveredErrorHandlers += 1;
+          this.onerror(new Event("error"));
+        });
+      }
+
+      get src() { return this.source; }
+    }
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:metadata");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    vi.stubGlobal("Audio", ErroringAudio);
+    try {
+      await expect(audioDuration(new File(["bad audio"], "bad.m4a"))).resolves.toBeNull();
+      expect(assignedSources).toEqual(["blob:metadata", ""]);
+      expect(deliveredErrorHandlers).toBe(1);
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:metadata");
+    } finally {
+      vi.unstubAllGlobals();
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+    }
+  });
+
+  it("cleans audio metadata handlers after a successful read", async () => {
+    class MetadataAudio {
+      static handlersClearedOnSourceReset = false;
+      preload = "";
+      duration = 12.345;
+      onloadedmetadata: ((event: Event) => unknown) | null = null;
+      onerror: ((event: Event) => unknown) | null = null;
+      private source = "";
+      set src(value: string) {
+        this.source = value;
+        if (value) queueMicrotask(() => this.onloadmetadata?.(new Event("loadedmetadata")));
+        else MetadataAudio.handlersClearedOnSourceReset = this.onloadedmetadata === null && this.onerror === null;
+      }
+      get src() { return this.source; }
+      private onloadmetadata(event: Event) { this.onloadedmetadata?.(event); }
+    }
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:metadata-success");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    vi.stubGlobal("Audio", MetadataAudio);
+    try {
+      await expect(audioDuration(new File(["valid audio"], "valid.m4a"))).resolves.toBe(12_345);
+      expect(MetadataAudio.handlersClearedOnSourceReset).toBe(true);
+      expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:metadata-success");
+    } finally {
+      vi.unstubAllGlobals();
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+    }
+  });
+
+  it("cleans audio metadata handlers when the metadata timeout expires", async () => {
+    class SilentAudio {
+      static handlersClearedOnSourceReset = false;
+      preload = "";
+      duration = Number.NaN;
+      onloadedmetadata: ((event: Event) => unknown) | null = null;
+      onerror: ((event: Event) => unknown) | null = null;
+      private source = "";
+      set src(value: string) {
+        this.source = value;
+        if (!value) SilentAudio.handlersClearedOnSourceReset = this.onloadedmetadata === null && this.onerror === null;
+      }
+      get src() { return this.source; }
+    }
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:metadata-timeout");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    vi.stubGlobal("Audio", SilentAudio);
+    vi.useFakeTimers();
+    try {
+      const result = audioDuration(new File(["silent audio"], "silent.m4a"));
+      await vi.advanceTimersByTimeAsync(2_500);
+      await expect(result).resolves.toBeNull();
+      expect(SilentAudio.handlersClearedOnSourceReset).toBe(true);
+      expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:metadata-timeout");
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+    }
+  });
+
+  it("builds an editable Markdown transcript with source details", () => {
+    expect(mergeTranscriptionDraft(session, {
+      summary: "A short summary.",
+      transcript: "Hello from the transcript.",
+    })).toContain("- Source audio: meeting.wav\n- Imported:");
+    expect(mergeTranscriptionDraft({ ...session, sourceNoteId: "notes/open.md" }, {
+      summary: "A short summary.",
+      transcript: "Hello from the transcript.",
+    })).toContain("## Transcript\n\nHello from the transcript.");
+    expect(mergeTranscriptionDraft({ ...session, sourceNoteId: "notes/open.md" }, {
+      summary: "A short summary.", transcript: "Hello from the transcript.",
+    })).not.toContain("Source note:");
+  });
+
+  it("supports choosing and dropping local audio and explains missing model setup", () => {
+    const dockActions = actions();
+    render(<TranscriptionDock model={model({ status, pending: [session] })} actions={dockActions} />);
+    expect(screen.getByRole("button", { name: "Choose audio" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Start recording" })).toBeEnabled();
+    expect(screen.getByText("Whisper Large v3 Turbo is not installed")).toBeInTheDocument();
+    expect(screen.getByText(/mlx-community\/whisper-large-v3-turbo/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download Whisper Large v3 Turbo" })).toBeEnabled();
+    const file = new File(["local audio"], "meeting.wav", { type: "audio/wav" });
+    fireEvent.drop(screen.getByRole("region", { name: "Local transcription" }), { dataTransfer: { files: { length: 1, item: () => file } } });
+    expect(dockActions.importFile).toHaveBeenCalledWith(file);
+    expect(screen.getByText("meeting.wav")).toBeInTheDocument();
+    expect(screen.getByText(/1:01/)).toBeInTheDocument();
+    expect(document.querySelector(".transcription-recorder")).toBeNull();
+  });
+
+  it("reports the selected full Whisper variant and download size", () => {
+    render(<TranscriptionDock model={model({ status: {
+      ...status,
+      modelId: "whisperlarge",
+      modelName: "Whisper Large v3",
+      model: "mlx-community/whisper-large-v3",
+      totalBytes: 3_100_000_000,
+    } })} actions={actions()} />);
+    expect(screen.getByText("Whisper Large v3 is not installed")).toBeInTheDocument();
+    expect(screen.getByText(/mlx-community\/whisper-large-v3 \(about 3.1 GB\)/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download Whisper Large v3" })).toBeEnabled();
+  });
+
+  it("confirms deletion inline and keeps the opened Markdown note", async () => {
+    const dockActions = actions();
+    render(<TranscriptionDock model={model({ pending: [session] })} actions={dockActions} />);
+    openMenu();
+    fireEvent.click(menuItem("Delete…"));
+    expect(screen.getByText(/Delete this local audio, transcript, and summary/)).toBeInTheDocument();
+    expect(screen.getByText(/Any opened or saved Markdown note will be kept/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("group", { name: /Confirm deletion/ })).not.toBeInTheDocument();
+
+    openMenu();
+    fireEvent.click(menuItem("Delete…"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete recording" }));
+    await waitFor(() => expect(dockActions.deleteSession).toHaveBeenCalledWith(session));
+  });
+
+  it("does not offer deletion while a session is being processed or the recorder is active", () => {
+    const dockActions = actions();
+    render(<TranscriptionDock model={model({
+      pending: [{ ...session, state: "transcribing" }],
+      recording: { phase: "recording", duration: "0:03", error: "", saving: false, source: "microphone", systemAudioSupported: false, systemAudioBlocked: false, levels: { mic: 0, system: 0 }, silent: { mic: false, system: false } },
+    })} actions={dockActions} />);
+    openMenu();
+    expect(menuItem("Delete…")).toBeDisabled();
+  });
+
+  it("shows only the current transcription percentage on the session", () => {
+    render(<TranscriptionDock model={model({
+      phase: "transcribing",
+      activeSession: { ...session, state: "recorded" },
+      pending: [{ ...session, state: "recorded", progressPercent: 47 }],
+    })} actions={actions()} />);
+    expect(screen.getByText("Transcribing… 47%")).toBeInTheDocument();
+    expect(document.querySelector(".transcription-download-progress")).toBeNull();
+  });
+
+  it("deletes from the session's bundle and ignores a stale refresh result", async () => {
+    let resolveSessions: ((value: TranscriptionSession[]) => void) | undefined;
+    apiMock.mockImplementation((url: string) => {
+      if (url === "/api/transcriptions/status") return status;
+      if (url === "/api/transcriptions?pending=1") return new Promise((resolve) => { resolveSessions = resolve; });
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    apiForBundleMock.mockResolvedValue({ deleted: true });
+    const setMessage = vi.fn();
+    const drafts = {
+      createDraft: vi.fn(() => "untitled:new"),
+      getDraftContent: vi.fn(() => undefined),
+      getDraftDocument: vi.fn(() => undefined),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const { result } = renderHook(() => useTranscription({
+      drafts, setMessage, sourceBundleId: "bundle-a",
+    }));
+    await waitFor(() => expect(resolveSessions).toBeDefined());
+    await act(async () => { await result.current.actions.deleteSession(session); });
+    expect(apiForBundleMock).toHaveBeenCalledWith("bundle-a", `/api/transcriptions/${session.id}`, { method: "DELETE" });
+    await act(async () => { resolveSessions?.([session]); });
+    expect(result.current.model.pending).toEqual([]);
+    expect(setMessage).toHaveBeenCalledWith(expect.stringContaining("Markdown note you opened or saved was kept"));
+  });
+
+  it("keeps a session after DELETE fails and permits a retry", async () => {
+    apiMock.mockImplementation((url: string) => {
+      if (url === "/api/transcriptions/status") return status;
+      if (url === "/api/transcriptions?pending=1") return [session];
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    apiForBundleMock.mockRejectedValueOnce(new Error("Local storage is unavailable."))
+      .mockResolvedValueOnce({ deleted: true });
+    const drafts = {
+      createDraft: vi.fn(() => "untitled:new"),
+      getDraftContent: vi.fn(() => undefined),
+      getDraftDocument: vi.fn(() => undefined),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const { result } = renderHook(() => useTranscription({
+      drafts, setMessage: vi.fn(), sourceBundleId: "bundle-a",
+    }));
+    await waitFor(() => expect(result.current.model.pending).toEqual([session]));
+    await act(async () => { await result.current.actions.deleteSession(session); });
+    expect(result.current.model.pending).toEqual([session]);
+    expect(result.current.model.error).toBe("Local storage is unavailable.");
+    await act(async () => { await result.current.actions.deleteSession(session); });
+    expect(result.current.model.pending).toEqual([]);
+    expect(apiForBundleMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores a completed process response after switching workspaces", async () => {
+    let resolveProcess: ((value: unknown) => void) | undefined;
+    apiMock.mockImplementation((url: string) => {
+      if (url === "/api/transcriptions/status") return status;
+      if (url === "/api/transcriptions?pending=1") return [{ ...session, state: "recorded" }];
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    apiForBundleMock.mockImplementation((_bundle: string | null, url: string) => {
+      if (url.endsWith("/process")) return new Promise((resolve) => { resolveProcess = resolve; });
+      throw new Error(`Unexpected bundle API request: ${url}`);
+    });
+    const drafts = {
+      createDraft: vi.fn(() => "untitled:new"),
+      getDraftContent: vi.fn(() => undefined),
+      getDraftDocument: vi.fn(() => undefined),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const setMessage = vi.fn();
+    const { result, rerender } = renderHook(({ bundle }: { bundle: string | null }) => useTranscription({
+      drafts, setMessage, sourceBundleId: bundle,
+    }), { initialProps: { bundle: "bundle-a" } });
+    await waitFor(() => expect(result.current.model.pending).toHaveLength(1));
+    act(() => { result.current.actions.transcribe({ ...session, state: "recorded" }); });
+    await waitFor(() => expect(resolveProcess).toBeDefined());
+    rerender({ bundle: "bundle-b" });
+    expect(result.current.model.activeSession).toBeNull();
+    expect(result.current.model.phase).toBe("idle");
+    rerender({ bundle: "bundle-a" });
+    expect(result.current.model.activeSession).toBeNull();
+    await act(async () => { resolveProcess?.({
+      session: { ...session, state: "ready" },
+      result: { transcript: "Do not open this stale response.", summary: "" },
+    }); });
+    expect(drafts.createDraft).not.toHaveBeenCalled();
+    expect(setMessage).not.toHaveBeenCalled();
+    expect(result.current.model.activeSession).toBeNull();
+  });
+
+  it("keeps a mismatched session hidden without cancelling its already-started request", async () => {
+    let resolveProcess: ((value: unknown) => void) | undefined;
+    apiMock.mockImplementation((url: string) => {
+      if (url === "/api/transcriptions/status") return status;
+      if (url === "/api/transcriptions?pending=1") return [];
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    apiForBundleMock.mockImplementation((_bundle: string | null, url: string) => {
+      if (url.endsWith("/process")) return new Promise((resolve) => { resolveProcess = resolve; });
+      throw new Error(`Unexpected bundle API request: ${url}`);
+    });
+    const drafts = {
+      createDraft: vi.fn(() => "untitled:new"),
+      getDraftContent: vi.fn(() => undefined),
+      getDraftDocument: vi.fn(() => undefined),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const setMessage = vi.fn();
+    const { result } = renderHook(() => useTranscription({
+      drafts, setMessage, sourceBundleId: "bundle-b",
+    }));
+    act(() => { result.current.actions.transcribe({ ...session, sourceBundleId: "bundle-a", state: "recorded" }); });
+    expect(resolveProcess).toBeDefined();
+    expect(apiForBundleMock).toHaveBeenCalledWith("bundle-a", `/api/transcriptions/${session.id}/process`, { method: "POST" });
+    expect(result.current.model.activeSession).toBeNull();
+    expect(result.current.model.phase).toBe("idle");
+
+    await act(async () => { resolveProcess?.({
+      session: { ...session, sourceBundleId: "bundle-a", state: "ready" },
+      result: { transcript: "Mismatched transcript stays hidden.", summary: "" },
+    }); });
+    expect(drafts.createDraft).not.toHaveBeenCalled();
+    expect(setMessage).not.toHaveBeenCalled();
+  });
+
+  it("polls a transcription found after reload every second and ignores an older refresh result", async () => {
+    let listCalls = 0;
+    let resolveSlow: ((value: TranscriptionSession[]) => void) | undefined;
+    let resolveFresh: ((value: TranscriptionSession[]) => void) | undefined;
+    const resumed = { ...session, state: "transcribing" as const, progressPercent: 10 };
+    apiMock.mockImplementation((url: string) => {
+      if (url === "/api/transcriptions/status") return status;
+      if (url === "/api/transcriptions?pending=1") {
+        listCalls += 1;
+        if (listCalls === 1) return [resumed];
+        if (listCalls === 2) return new Promise((resolve) => { resolveSlow = resolve; });
+        if (listCalls === 3) return new Promise((resolve) => { resolveFresh = resolve; });
+        return [{ ...resumed, progressPercent: 72 }];
+      }
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    const drafts = {
+      createDraft: vi.fn(() => "untitled:new"),
+      getDraftContent: vi.fn(() => undefined),
+      getDraftDocument: vi.fn(() => undefined),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const { result, unmount } = renderHook(() => useTranscription({
+      drafts, setMessage: vi.fn(), sourceBundleId: "bundle-a",
+    }));
+    await waitFor(() => expect(result.current.model.pending[0]?.progressPercent).toBe(10));
+    await waitFor(() => expect(resolveSlow).toBeDefined());
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    await waitFor(() => expect(resolveFresh).toBeDefined());
+    await act(async () => { resolveFresh?.([{ ...resumed, progressPercent: 72 }]); });
+    await waitFor(() => expect(result.current.model.pending[0]?.progressPercent).toBe(72));
+    await act(async () => { resolveSlow?.([{ ...resumed, progressPercent: 12 }]); });
+    expect(result.current.model.pending[0]?.progressPercent).toBe(72);
+    unmount();
+  });
+
+  it("clears an active transcription when switching from an unbundled workspace", async () => {
+    let resolveProcess: ((value: unknown) => void) | undefined;
+    apiMock.mockImplementation((url: string) => {
+      if (url === "/api/transcriptions/status") return status;
+      if (url === "/api/transcriptions?pending=1") return [];
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    apiForBundleMock.mockImplementation((_bundle: string | null, url: string) => {
+      if (url.endsWith("/process")) return new Promise((resolve) => { resolveProcess = resolve; });
+      throw new Error(`Unexpected bundle API request: ${url}`);
+    });
+    const drafts = {
+      createDraft: vi.fn(() => "untitled:new"),
+      getDraftContent: vi.fn(() => undefined),
+      getDraftDocument: vi.fn(() => undefined),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const { result, rerender } = renderHook(({ bundle }: { bundle: string | null }) => useTranscription({
+      drafts, setMessage: vi.fn(), sourceBundleId: bundle,
+    }), { initialProps: { bundle: null } });
+    act(() => { result.current.actions.transcribe({ ...session, sourceBundleId: null, state: "recorded" }); });
+    await waitFor(() => expect(resolveProcess).toBeDefined());
+    rerender({ bundle: "bundle-b" });
+    await waitFor(() => expect(result.current.model.activeSession).toBeNull());
+    await act(async () => { resolveProcess?.({
+      session: { ...session, sourceBundleId: null, state: "ready" },
+      result: { transcript: "Stale unbundled result.", summary: "" },
+    }); });
+    expect(drafts.createDraft).not.toHaveBeenCalled();
+  });
+
+  it("records to WAV, retains failed saves for retry, and keeps the starting workspace association", async () => {
+    const stoppedTracks = vi.fn();
+    const stream = { getTracks: () => [{ stop: stoppedTracks }] };
+    const getUserMedia = vi.fn(async () => stream);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    class MockMediaRecorder extends EventTarget {
+      state = "inactive";
+      mimeType = "audio/webm";
+      start() { this.state = "recording"; }
+      stop() {
+        this.state = "inactive";
+        const data = new Event("dataavailable") as Event & { data: Blob };
+        Object.defineProperty(data, "data", { value: new Blob(["recorded"]) });
+        this.dispatchEvent(data);
+        this.dispatchEvent(new Event("stop"));
+      }
+    }
+    vi.stubGlobal("MediaRecorder", MockMediaRecorder);
+    class MockAudioContext {
+      decodeAudioData = vi.fn(async () => ({
+        numberOfChannels: 1,
+        length: 2,
+        sampleRate: 16_000,
+        getChannelData: () => new Float32Array([-0.5, 0.5]),
+      } as unknown as AudioBuffer));
+      close = vi.fn(async () => undefined);
+    }
+    vi.stubGlobal("AudioContext", MockAudioContext);
+    const importFile = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const options = {
+      association: { sourceBundleId: "bundle-a" },
+      onImport: importFile,
+    };
+    const { result, rerender, unmount } = renderHook((props: typeof options) => useAudioRecorder(props), { initialProps: options });
+    await act(async () => { await Promise.all([result.current.start(), result.current.start()]); });
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(result.current.phase).toBe("recording");
+    rerender({ ...options, association: { sourceBundleId: "bundle-b" } });
+    await act(async () => { result.current.stop(); });
+    await waitFor(() => expect(importFile).toHaveBeenCalledTimes(1));
+    const firstFile = importFile.mock.calls[0]?.[0] as File;
+    expect(firstFile.name).toMatch(/\.wav$/);
+    expect(firstFile.type).toBe("audio/wav");
+    expect(new TextDecoder().decode(await firstFile.slice(0, 4).arrayBuffer())).toBe("RIFF");
+    expect(importFile.mock.calls[0]?.[1]).toEqual({ sourceBundleId: "bundle-a" });
+    expect(result.current.phase).toBe("ready");
+    await act(async () => { await result.current.retry(); });
+    expect(importFile).toHaveBeenCalledTimes(2);
+    expect(importFile.mock.calls[1]?.[0]).toBe(firstFile);
+    expect(stoppedTracks).toHaveBeenCalledTimes(1);
+    expect(result.current.phase).toBe("idle");
+    await act(async () => { await result.current.start(); });
+    unmount();
+    await waitFor(() => expect(importFile).toHaveBeenCalledTimes(3));
+    expect(stoppedTracks).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+
+  it("uploads audio without associating it with the open note", async () => {
+    apiForBundleMock.mockResolvedValueOnce({ session }).mockResolvedValueOnce({ saved: true });
+    const drafts = {
+      createDraft: vi.fn(() => "untitled:new"),
+      getDraftContent: vi.fn(() => undefined),
+      getDraftDocument: vi.fn(() => undefined),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const { result } = renderHook(() => useTranscription({
+      drafts, setMessage: vi.fn(), sourceBundleId: "bundle-a",
+    }));
+    const file = new File(["local audio"], "meeting.wav", { type: "audio/wav" });
+    await act(async () => { await result.current.actions.importFile(file); });
+    const createCall = apiForBundleMock.mock.calls[0];
+    expect(createCall?.[0]).toBe("bundle-a");
+    expect(JSON.parse(createCall?.[2]?.body as string)).toEqual({ fileName: "meeting.wav", durationMs: null, sourceBundleId: "bundle-a" });
+    expect(JSON.parse(createCall?.[2]?.body as string)).not.toHaveProperty("sourceNoteId");
+  });
+
+  it("stops tracks when the dock navigates away during a pending permission request", async () => {
+    let grantAccess: ((stream: MediaStream) => void) | undefined;
+    const stoppedTrack = vi.fn();
+    const stream = { getTracks: () => [{ stop: stoppedTrack }] } as unknown as MediaStream;
+    const getUserMedia = vi.fn(() => new Promise<MediaStream>((resolve) => { grantAccess = resolve }));
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia } });
+    vi.stubGlobal("MediaRecorder", class {});
+    const { result, unmount } = renderHook(() => useAudioRecorder({
+      association: { sourceBundleId: null },
+      onImport: vi.fn().mockResolvedValue(true),
+    }));
+    let starting!: Promise<void>;
+    act(() => { starting = result.current.start(); });
+    expect(result.current.phase).toBe("requesting");
+    act(() => { result.current.stop(); });
+    await act(async () => {
+      grantAccess?.(stream);
+      await starting;
+    });
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(stoppedTrack).toHaveBeenCalledTimes(1);
+    expect(result.current.phase).toBe("idle");
+    unmount();
+    vi.unstubAllGlobals();
+  });
+
+  it("locks a retained recording while retry conversion is pending", async () => {
+    const stream = { getTracks: () => [{ stop: vi.fn() }] };
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => stream) },
+    });
+    class MockMediaRecorder extends EventTarget {
+      state = "inactive";
+      mimeType = "audio/webm";
+      start() { this.state = "recording"; }
+      stop() {
+        this.state = "inactive";
+        const data = new Event("dataavailable") as Event & { data: Blob };
+        Object.defineProperty(data, "data", { value: new Blob(["recorded"]) });
+        this.dispatchEvent(data);
+        this.dispatchEvent(new Event("stop"));
+      }
+    }
+    vi.stubGlobal("MediaRecorder", MockMediaRecorder);
+    const audio = {
+      numberOfChannels: 1,
+      length: 1,
+      sampleRate: 16_000,
+      getChannelData: () => new Float32Array([0.25]),
+    } as unknown as AudioBuffer;
+    let resolveDecode: ((buffer: AudioBuffer) => void) | undefined;
+    let decodeCount = 0;
+    class MockAudioContext {
+      decodeAudioData = vi.fn(() => {
+        decodeCount += 1;
+        if (decodeCount === 1) return Promise.reject(new Error("decoder failed once"));
+        return new Promise<AudioBuffer>((resolve) => { resolveDecode = resolve; });
+      });
+      close = vi.fn(async () => undefined);
+    }
+    vi.stubGlobal("AudioContext", MockAudioContext);
+    const onImport = vi.fn().mockResolvedValue(true);
+    const { result, unmount } = renderHook(() => useAudioRecorder({
+      association: { sourceBundleId: null },
+      onImport,
+    }));
+    await act(async () => { await result.current.start(); });
+    await act(async () => { result.current.stop(); });
+    await waitFor(() => expect(result.current.phase).toBe("ready"));
+
+    let retrying!: Promise<void>;
+    act(() => { retrying = result.current.retry(); });
+    expect(result.current.phase).toBe("processing");
+    act(() => {
+      result.current.discard();
+      void result.current.start();
+    });
+    expect(result.current.phase).toBe("processing");
+    expect(onImport).not.toHaveBeenCalled();
+    await waitFor(() => expect(resolveDecode).toBeDefined());
+    await act(async () => {
+      resolveDecode?.(audio);
+      await retrying;
+    });
+    expect(onImport).toHaveBeenCalledTimes(1);
+    expect(result.current.phase).toBe("idle");
+    unmount();
+    vi.unstubAllGlobals();
+  });
+
+  it("opens a fresh raw transcript draft after the previous draft was filed", async () => {
+    const rawResult = { summary: "Raw summary.", transcript: "Original recording transcript." };
+    const contentById = new Map<string, string>();
+    const createdIds: string[] = [];
+    apiForBundleMock.mockResolvedValue({ session, result: rawResult });
+    const drafts = {
+      createDraft: vi.fn((content = "") => {
+        const id = "untitled:draft-" + (createdIds.length + 1);
+        createdIds.push(id);
+        contentById.set(id, content);
+        return id;
+      }),
+      getDraftContent: vi.fn((id: string) => contentById.get(id)),
+      getDraftDocument: vi.fn(() => undefined),
+      isDraftOpen: vi.fn(() => true),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const { result } = renderHook(() => useTranscription({
+      drafts, setMessage: vi.fn(), sourceBundleId: "bundle-a",
+    }));
+
+    await act(async () => { await result.current.actions.openTranscript(session); });
+    expect(contentById.get("untitled:draft-1")).toContain("Original recording transcript.");
+    act(() => { result.current.draftFiled("untitled:draft-1", "notes/meeting.md", "bundle-a"); });
+    await act(async () => { await result.current.actions.openTranscript({ ...session, draftId: "notes/meeting.md" }); });
+
+    expect(createdIds).toEqual(["untitled:draft-1", "untitled:draft-2"]);
+    expect(contentById.get("untitled:draft-2")).toContain("Original recording transcript.");
+    expect(drafts.openDraft).not.toHaveBeenCalled();
+    expect(apiForBundleMock.mock.calls.some(([, , options]) => options?.method === "POST")).toBe(false);
+  });
+
+  it("opens a plain-text draft without speaker headings and never links it to the session", async () => {
+    const raw = {
+      summary: "",
+      transcript: "**{{speaker1}}** [00:00]\nHello there.\n\n**{{speaker2}}** [00:09]\nHi.",
+      speakers: true, speakerCount: 2, speakerNumbers: [1, 2],
+      segments: [{ start: 0, end: 2, text: "Hello there.", speaker: 1 }, { start: 9, end: 10, text: "Hi.", speaker: 2 }],
+    };
+    apiForBundleMock.mockResolvedValue({ session, result: raw });
+    const contents: string[] = [];
+    const drafts = {
+      createDraft: vi.fn((content = "") => { contents.push(content); return `untitled:draft-${contents.length}`; }),
+      getDraftContent: vi.fn(), getDraftDocument: vi.fn(() => undefined), isDraftOpen: vi.fn(() => true), updateDraftContent: vi.fn(), openDraft: vi.fn(),
+    };
+    const setMessage = vi.fn();
+    const { result } = renderHook(() => useTranscription({ drafts, setMessage, sourceBundleId: "bundle-a" }));
+
+    await act(async () => { await result.current.actions.openTranscript(session, { speakers: false }); });
+    expect(contents[0]).toContain("Hello there.\n\nHi.");
+    expect(contents[0]).not.toMatch(/## Speakers|\{\{speaker|\[\d\d:\d\d\]/);
+    expect(setMessage).toHaveBeenCalledWith("Transcript opened as plain text in a new editable draft.");
+    expect(result.current.model.hasOpenDraftFor(session)).toBe(false);
+
+    await act(async () => { await result.current.actions.openTranscript(session, { speakers: true }); });
+    expect(contents[1]).toContain("## Speakers");
+    expect(contents[1]).toContain("**{{speaker1}}** [00:00]");
+  });
+
+  it("summarizes the saved recording without mutating its open draft", async () => {
+    const raw = { summary: "Original summary.", transcript: "Original transcript." };
+    const initialDraft = "# Meeting\n\n## Summary\n\nOriginal summary.\n\n## Transcript\n\nEdited draft transcript.\n";
+    const draftsById = new Map<string, string>();
+    const openIds = new Set<string>();
+    let draftNumber = 0;
+    let finishSummary: ((value: unknown) => void) | undefined;
+    let announceSummary: (() => void) | undefined;
+    const summaryStarted = new Promise<void>((resolve) => { announceSummary = resolve; });
+    apiForBundleMock.mockImplementation((_bundleId: string | null, url: string) => {
+      if (url.endsWith("/summarize")) {
+        return new Promise((resolve) => { finishSummary = resolve; announceSummary?.(); });
+      }
+      if (/\/api\/transcriptions\/[^/]+$/.test(url)) return Promise.resolve({ session: { ...session, draftId: "notes/meeting.md" }, result: raw });
+      throw new Error("Unexpected API request: " + url);
+    });
+    const drafts = {
+      createDraft: vi.fn((content = "") => {
+        draftNumber += 1;
+        const id = `untitled:active-draft-${draftNumber}`;
+        draftsById.set(id, content || initialDraft);
+        openIds.add(id);
+        return id;
+      }),
+      getDraftContent: vi.fn((id: string) => draftsById.get(id)),
+      getDraftDocument: vi.fn((id: string) => {
+        const content = draftsById.get(id);
+        return content === undefined ? undefined : { content } as never;
+      }),
+      isDraftOpen: vi.fn((id: string) => openIds.has(id)),
+      updateDraftContent: vi.fn((id: string, content: string) => { draftsById.set(id, content); }),
+      openDraft: vi.fn((id: string) => { openIds.add(id); }),
+    };
+    const { result } = renderHook(() => useTranscription({
+      drafts, setMessage: vi.fn(), sourceBundleId: "bundle-a",
+    }));
+
+    await act(async () => { await result.current.actions.openTranscript(session); });
+    const draftId = "untitled:active-draft-1";
+    draftsById.set(draftId, initialDraft);
+    act(() => { result.current.actions.regenerateSummary({ ...session, draftId: "notes/meeting.md" }); });
+    await summaryStarted;
+    result.current.draftFiled(draftId, "notes/meeting.md", "bundle-a");
+    openIds.delete(draftId);
+    await act(async () => { finishSummary?.({ result: { summary: "Derived summary.", transcript: "Edited draft transcript." } }); });
+
+    expect(draftsById.get(draftId)).toBe(initialDraft);
+    expect(draftNumber).toBe(1);
+    expect(drafts.createDraft).toHaveBeenCalledTimes(1);
+    expect(drafts.updateDraftContent).not.toHaveBeenCalled();
+    expect(drafts.openDraft).not.toHaveBeenCalled();
+    expect(apiForBundleMock.mock.calls.some(([, , options]) => options?.method === "PATCH")).toBe(false);
+  });
+
+  it("keeps an edited draft intact when summary generation fails", async () => {
+    const raw = { summary: "Raw summary.", transcript: "Original transcript." };
+    const content = new Map<string, string>();
+    apiForBundleMock.mockImplementation((_bundleId: string | null, url: string) => {
+      if (/\/api\/transcriptions\/[^/]+$/.test(url)) return Promise.resolve({ session, result: raw });
+      if (url.endsWith("/summarize")) return Promise.reject(new Error("Local model unavailable."));
+      throw new Error("Unexpected API request: " + url);
+    });
+    const drafts = {
+      createDraft: vi.fn((initial = "") => { content.set("untitled:summary-draft", initial); return "untitled:summary-draft"; }),
+      getDraftContent: vi.fn((id: string) => content.get(id)),
+      getDraftDocument: vi.fn(() => undefined),
+      isDraftOpen: vi.fn(() => true),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const { result } = renderHook(() => useTranscription({
+      drafts, setMessage: vi.fn(), sourceBundleId: "bundle-a",
+    }));
+    await act(async () => { await result.current.actions.openTranscript(session); });
+    const edited = (content.get("untitled:summary-draft") || "").replace("Original transcript.", "Edited draft transcript.");
+    content.set("untitled:summary-draft", edited);
+    await act(async () => { await result.current.actions.regenerateSummary(session); });
+    expect(content.get("untitled:summary-draft")).toBe(edited);
+    expect(drafts.updateDraftContent).not.toHaveBeenCalled();
+    expect(raw.transcript).toBe("Original transcript.");
+    expect(result.current.model.error).toBe("Local model unavailable.");
+  });
+
+  it("does not open a completed transcript in a different bundle", async () => {
+    let resolveProcess: ((value: unknown) => void) | undefined;
+    const processResult = new Promise((resolve) => { resolveProcess = resolve; });
+    apiForBundleMock.mockImplementation((_: string | null, url: string) => {
+      if (url.endsWith("/process")) return processResult;
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    apiMock.mockImplementation((url: string) => {
+      if (url === "/api/transcriptions/status") return { ...status, modelState: "ready", canTranscribe: true };
+      if (url === "/api/transcriptions?pending=1") return [];
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    const drafts = {
+      createDraft: vi.fn(() => "untitled:new"),
+      getDraftContent: vi.fn(() => undefined),
+      getDraftDocument: vi.fn(() => undefined),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+      persistDraft: vi.fn(async () => false),
+    };
+    const setMessage = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ bundleId }: { bundleId: string }) => useTranscription({
+        drafts,
+        setMessage,
+        sourceBundleId: bundleId,
+      }),
+      { initialProps: { bundleId: "bundle-a" } },
+    );
+    act(() => { result.current.actions.transcribe({ ...session, draftId: null, sourceBundleId: "bundle-a", state: "recorded" }); });
+    rerender({ bundleId: "bundle-b" });
+    await act(async () => {
+      resolveProcess?.({ session: { ...session, draftId: null, sourceBundleId: "bundle-a" }, result: { summary: "", transcript: "local transcript" } });
+      await processResult;
+    });
+    await waitFor(() => expect(result.current.model.activeSession).toBeNull());
+    expect(drafts.createDraft).not.toHaveBeenCalled();
+    expect(drafts.openDraft).not.toHaveBeenCalled();
+  });
+
+  it("does not open a draft when the bundle changes while raw transcript loads", async () => {
+    let resolveSession: ((value: unknown) => void) | undefined;
+    let announceLoad: (() => void) | undefined;
+    const loadStarted = new Promise<void>((resolve) => { announceLoad = resolve; });
+    apiForBundleMock.mockImplementation((_bundleId: string | null, url: string) => {
+      if (/\/api\/transcriptions\/[^/]+$/.test(url)) return new Promise((resolve) => {
+        resolveSession = resolve;
+        announceLoad?.();
+      });
+      throw new Error("Unexpected bundle API request: " + url);
+    });
+    apiMock.mockImplementation((url: string) => {
+      if (url === "/api/transcriptions/status") return { ...status, modelState: "ready", canTranscribe: true };
+      if (url === "/api/transcriptions?pending=1") return [];
+      throw new Error("Unexpected API request: " + url);
+    });
+    const drafts = {
+      createDraft: vi.fn(() => "untitled:new"),
+      getDraftContent: vi.fn(() => undefined),
+      getDraftDocument: vi.fn(() => undefined),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const setMessage = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ bundleId }: { bundleId: string }) => useTranscription({
+        drafts, setMessage, sourceBundleId: bundleId,
+      }),
+      { initialProps: { bundleId: "bundle-a" } },
+    );
+    act(() => { result.current.actions.openTranscript(session); });
+    await loadStarted;
+    rerender({ bundleId: "bundle-b" });
+    await act(async () => { resolveSession?.({ session, result: { summary: "Raw summary", transcript: "Raw transcript" } }); });
+    expect(setMessage).not.toHaveBeenCalled();
+    expect(drafts.createDraft).not.toHaveBeenCalled();
+    expect(drafts.openDraft).not.toHaveBeenCalled();
+  });
+
+  it("releases summary controls after the active bundle changes", async () => {
+    let resolveOldSummary: ((value: unknown) => void) | undefined;
+    let rejectOldSummary: ((reason: Error) => void) | undefined;
+    let summaryCalls = 0;
+    apiMock.mockImplementation((url: string) => {
+      if (url === "/api/transcriptions/status") return { ...status, modelState: "ready", canTranscribe: true };
+      if (url === "/api/transcriptions?pending=1") return [];
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    apiForBundleMock.mockImplementation((_: string | null, url: string) => {
+      if (url.endsWith("/summarize")) {
+        summaryCalls += 1;
+        if (summaryCalls === 1) return new Promise((resolve) => { resolveOldSummary = resolve; });
+        if (summaryCalls === 2) return new Promise((_, reject) => { rejectOldSummary = reject; });
+        return Promise.resolve({ result: { summary: "New bundle summary.", transcript: "New bundle transcript." } });
+      }
+      if (/\/api\/transcriptions\/[^/]+$/.test(url)) return Promise.resolve({ result: {
+        summary: "Previous summary.", transcript: "New bundle transcript.",
+      } });
+      throw new Error(`Unexpected bundle API request: ${url}`);
+    });
+    const drafts = {
+      createDraft: vi.fn(() => "untitled:new"),
+      getDraftContent: vi.fn(() => undefined),
+      getDraftDocument: vi.fn(() => undefined),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const setMessage = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ bundleId }: { bundleId: string }) => useTranscription({
+        drafts,
+        setMessage,
+        sourceBundleId: bundleId,
+      }),
+      { initialProps: { bundleId: "bundle-a" } },
+    );
+    const oldSession = { ...session, draftId: null, sourceBundleId: "bundle-a" };
+    act(() => { result.current.actions.regenerateSummary(oldSession); });
+    await waitFor(() => expect(summaryCalls).toBe(1));
+    rerender({ bundleId: "bundle-b" });
+    rerender({ bundleId: "bundle-a" });
+    await act(async () => { resolveOldSummary?.({ result: { summary: "Stale summary.", transcript: "New bundle transcript." } }); });
+    await waitFor(() => expect(result.current.model.phase).toBe("idle"));
+    expect(drafts.updateDraftContent).not.toHaveBeenCalled();
+    expect(setMessage).not.toHaveBeenCalled();
+
+    act(() => { result.current.actions.regenerateSummary(oldSession); });
+    await waitFor(() => expect(summaryCalls).toBe(2));
+    rerender({ bundleId: "bundle-b" });
+    rerender({ bundleId: "bundle-a" });
+    await act(async () => { rejectOldSummary?.(new Error("Stale summary failure.")); });
+    await waitFor(() => expect(result.current.model.phase).toBe("idle"));
+    expect(result.current.model.error).toBe("");
+    expect(setMessage).not.toHaveBeenCalled();
+
+    const newSession = { ...session, id: "22222222-2222-4222-8222-222222222222", draftId: null, sourceBundleId: "bundle-b" };
+    rerender({ bundleId: "bundle-b" });
+    act(() => { result.current.actions.regenerateSummary(newSession); });
+    await waitFor(() => expect(summaryCalls).toBe(3));
+    await waitFor(() => expect(result.current.model.phase).toBe("idle"));
+  });
+
+  it("retains saved audio and lets the user cancel an active transcription", () => {
+    const dockActions = actions();
+    render(<TranscriptionDock model={model({
+      phase: "transcribing",
+      activeSession: { ...session, state: "transcribing", draftId: null },
+      pending: [{ ...session, state: "transcribing", draftId: null }],
+      progress: "Transcribing audio locally…",
+    })} actions={dockActions} />);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(dockActions.cancel).toHaveBeenCalledOnce();
+  });
+
+  it("exposes summary cancellation while keeping the prior note intact", () => {
+    const dockActions = actions();
+    render(<TranscriptionDock model={model({
+      phase: "summarizing",
+      activeSession: session,
+      pending: [session],
+      progress: "Summarizing the saved recording with the selected local text model…",
+    })} actions={dockActions} />);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel summary" }));
+    expect(dockActions.cancel).toHaveBeenCalledWith(session);
+    expect(screen.getByText(/saved recording stays unchanged/i)).toBeInTheDocument();
+  });
+
+  it("has no speaker toggles anywhere and offers the speaker model download whenever it is missing", () => {
+    const dockActions = actions();
+    const pendingSession: TranscriptionSession = { ...session, state: "recorded" };
+    const status = { ...readyStatus, diarization: speakerStatus };
+    const { rerender } = render(<TranscriptionDock model={model({ status, pending: [pendingSession] })} actions={dockActions} />);
+    expect(document.querySelector(".transcription-header input[type=checkbox]")).toBeNull();
+    openMenu();
+    expect(screen.queryByRole("menuitemcheckbox", { name: /Identify speakers/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Sortformer Speaker Labels is not installed")).toBeInTheDocument();
+    expect(screen.getByText(/Until it is installed, transcripts have no speaker labels/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Transcribe" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Download Sortformer Speaker Labels" }));
+    expect(dockActions.installSpeakerModel).toHaveBeenCalledOnce();
+
+    rerender(<TranscriptionDock model={model({
+      status: { ...readyStatus, diarization: { ...speakerStatus, modelState: "downloading", downloadPercent: 40, downloadedBytes: 100_000_000, installing: true } },
+    })} actions={dockActions} />);
+    expect(screen.getByLabelText("Sortformer Speaker Labels download 40%")).toBeInTheDocument();
+
+    rerender(<TranscriptionDock model={model({ status: { ...readyStatus, diarization: { ...speakerStatus, modelState: "ready", canDiarize: true } } })} actions={dockActions} />);
+    expect(screen.queryByRole("button", { name: /Download Sortformer/ })).not.toBeInTheDocument();
+  });
+
+  it("hides the speaker notice until the server reports speaker support", () => {
+    render(<TranscriptionDock model={model({ status: readyStatus })} actions={actions()} />);
+    expect(screen.queryByText(/Speaker labels need/)).not.toBeInTheDocument();
+  });
+
+  it("always offers the plain-text draft, and the speakers draft once speakers are known", () => {
+    const dockActions = actions();
+    const { rerender } = render(<TranscriptionDock model={model({ status: readyStatus, pending: [{ ...session, speakerCount: 2 }] })} actions={dockActions} />);
+    openMenu();
+    expect(screen.queryByRole("menuitem", { name: "Open draft" })).not.toBeInTheDocument();
+    fireEvent.click(menuItem("Open draft as plain text"));
+    expect(dockActions.openTranscript).toHaveBeenCalledWith(expect.objectContaining({ id: session.id }), { speakers: false });
+    openMenu();
+    fireEvent.click(menuItem("Open draft with speakers"));
+    expect(dockActions.openTranscript).toHaveBeenLastCalledWith(expect.objectContaining({ id: session.id }), { speakers: true });
+
+    rerender(<TranscriptionDock model={model({ status: readyStatus, pending: [{ ...session, speakerCount: 0 }] })} actions={dockActions} />);
+    openMenu();
+    expect(menuItem("Open draft")).toBeInTheDocument();
+    expect(menuItem("Open draft as plain text")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Open draft with speakers" })).not.toBeInTheDocument();
+  });
+
+  it("shows a speaker warning when the draft opens", async () => {
+    apiMock.mockImplementation((url: string) => {
+      if (url === "/api/transcriptions/status") return { ...readyStatus, diarization: { ...speakerStatus, modelState: "ready", canDiarize: true } };
+      if (url === "/api/transcriptions?pending=1") return [];
+      throw new Error(`Unexpected API request: ${url}`);
+    });
+    apiForBundleMock.mockImplementation(async (_bundle: string | null, url: string) => {
+      if (url === "/api/transcriptions") return { session: { ...session, state: "queued" } };
+      if (url.endsWith("/audio")) return { session: { ...session, state: "recorded" } };
+      if (url.endsWith("/process")) {
+        return {
+          session: { ...session, state: "ready", identifySpeakers: true },
+          result: { summary: "", transcript: "[00:01] Hi.", speakerWarning: "Speaker labels could not be added: out of memory" },
+        };
+      }
+      throw new Error(`Unexpected bundle API request: ${url}`);
+    });
+    // audioDuration waits for media metadata that jsdom never delivers; without Audio it resolves to null at once.
+    vi.stubGlobal("Audio", undefined);
+    const setMessage = vi.fn();
+    const drafts = {
+      createDraft: vi.fn(() => "untitled:new"),
+      getDraftContent: vi.fn(() => undefined),
+      getDraftDocument: vi.fn(() => undefined),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const { result } = renderHook(() => useTranscription({ drafts, setMessage, sourceBundleId: "bundle-a" }));
+    await act(async () => { await result.current.actions.importFile(new File(["a"], "first.wav", { type: "audio/wav" })); });
+    const firstBody = JSON.parse(apiForBundleMock.mock.calls.find(([, url]) => url === "/api/transcriptions")?.[2].body as string);
+    expect(firstBody).toMatchObject({ fileName: "first.wav" });
+
+    await act(async () => { result.current.actions.transcribe({ ...session, state: "recorded", draftId: null, sourceBundleId: "bundle-a" }); });
+    await waitFor(() => expect(setMessage).toHaveBeenCalledWith(expect.stringContaining("Speaker labels could not be added: out of memory")));
+    expect(drafts.createDraft).toHaveBeenCalledWith(expect.stringContaining("[00:01] Hi."));
+    vi.unstubAllGlobals();
+  });
+
+  it("confirms re-transcription of the saved recording without a speaker toggle", () => {
+    const dockActions = actions();
+    const ready: TranscriptionSession = { ...session };
+    render(<TranscriptionDock model={model({ status: { ...readyStatus, diarization: { ...speakerStatus, modelState: "ready", canDiarize: true } }, pending: [ready] })} actions={dockActions} />);
+    openMenu();
+    expect(screen.queryByRole("menuitemcheckbox", { name: /Identify speakers/ })).not.toBeInTheDocument();
+    fireEvent.click(menuItem("Re-transcribe…"));
+    expect(screen.queryByRole("checkbox", { name: /Identify speakers/ })).not.toBeInTheDocument();
+    expect(dockActions.retranscribe).not.toHaveBeenCalled();
+    const group = screen.getByRole("group", { name: "Confirm re-transcription of meeting.wav" });
+    expect(group).toHaveTextContent("saved recording transcript and speaker names will be replaced");
+    expect(group).toHaveTextContent("Open drafts will stay unchanged");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("group", { name: /Confirm re-transcription/ })).not.toBeInTheDocument();
+    openMenu();
+    fireEvent.click(menuItem("Re-transcribe…"));
+    fireEvent.click(within(screen.getByRole("group", { name: /Confirm re-transcription/ })).getByRole("button", { name: "Re-transcribe" }));
+    expect(dockActions.retranscribe).toHaveBeenCalledWith(ready);
+  });
+
+  it("re-transcribes the saved result and leaves an open draft unchanged", async () => {
+    const draftsById = new Map<string, string>();
+    apiForBundleMock.mockImplementation(async (_bundle: string | null, url: string, options?: { body?: string }) => {
+      if (url.endsWith("/process")) {
+        expect(JSON.parse(options?.body ?? "{}")).toEqual({ retranscribe: true });
+        return {
+          session,
+          result: { summary: "", transcript: "**{{speaker1}}** [00:00]\nNew.\n\n**{{speaker2}}** [00:05]\nMore.", speakers: true, speakerNumbers: [1, 2] },
+        };
+      }
+      if (/\/api\/transcriptions\/[^/]+$/.test(url)) return { session, result: { summary: "", transcript: "old text" } };
+      throw new Error("Unexpected API request: " + url);
+    });
+    const drafts = {
+      createDraft: vi.fn((content = "") => { draftsById.set("untitled:one", content); return "untitled:one"; }),
+      getDraftContent: vi.fn((id: string) => draftsById.get(id)),
+      getDraftDocument: vi.fn(() => undefined),
+      isDraftOpen: vi.fn(() => true),
+      updateDraftContent: vi.fn((id: string, content: string) => { draftsById.set(id, content); }),
+      openDraft: vi.fn(),
+    };
+    const setMessage = vi.fn();
+    const { result } = renderHook(() => useTranscription({ drafts, setMessage, sourceBundleId: "bundle-a" }));
+    await act(async () => { await result.current.actions.openTranscript(session); });
+    expect(drafts.createDraft).toHaveBeenCalledTimes(1);
+    draftsById.set("untitled:one", "# Meeting\n\n## Summary\n\n- Mine\n\n## Speakers\n\nspeaker1:: Alex\n\n## Transcript\n\nold text\n");
+    apiForBundleMock.mockClear();
+    await act(async () => { result.current.actions.retranscribe(session); });
+    await waitFor(() => expect(setMessage).toHaveBeenCalledWith("Re-transcription saved to the recording."));
+    expect(draftsById.get("untitled:one")).toBe("# Meeting\n\n## Summary\n\n- Mine\n\n## Speakers\n\nspeaker1:: Alex\n\n## Transcript\n\nold text\n");
+    expect(drafts.updateDraftContent).not.toHaveBeenCalled();
+    expect(drafts.createDraft).toHaveBeenCalledTimes(1);
+    expect(setMessage).toHaveBeenCalledWith("Re-transcription saved to the recording.");
+  });
+
+  it("does not create a draft after re-transcribing when none is open", async () => {
+    apiForBundleMock.mockResolvedValue({ session, result: { summary: "", transcript: "[00:01] Hi." } });
+    const drafts = { createDraft: vi.fn(() => "untitled:new"), getDraftContent: vi.fn(), getDraftDocument: vi.fn(), updateDraftContent: vi.fn(), openDraft: vi.fn() };
+    const { result } = renderHook(() => useTranscription({ drafts, setMessage: vi.fn(), sourceBundleId: "bundle-a" }));
+    await act(async () => { result.current.actions.retranscribe(session); });
+    await waitFor(() => expect(drafts.createDraft).not.toHaveBeenCalled());
+    expect(drafts.updateDraftContent).not.toHaveBeenCalled();
+  });
+
+  it("keeps the previous transcript and shows the failure when re-transcription fails", async () => {
+    apiForBundleMock.mockRejectedValue(new Error("Whisper crashed."));
+    apiMock.mockResolvedValue([]);
+    const drafts = { createDraft: vi.fn(), getDraftContent: vi.fn(), getDraftDocument: vi.fn(), updateDraftContent: vi.fn(), openDraft: vi.fn() };
+    const { result } = renderHook(() => useTranscription({ drafts, setMessage: vi.fn(), sourceBundleId: "bundle-a" }));
+    await act(async () => { result.current.actions.retranscribe(session); });
+    await waitFor(() => expect(result.current.model.error).toBe("Whisper crashed. Your previous transcript was kept."));
+    expect(drafts.updateDraftContent).not.toHaveBeenCalled();
+    expect(drafts.createDraft).not.toHaveBeenCalled();
+  });
+
+  it("summarizes saved speaker names without editing the open draft", async () => {
+    const draft = "# Meeting\n\n## Summary\n\nx\n\n## Speakers\n\nspeaker1:: Draft Alex\nspeaker2:: Draft Sam\n\n## Transcript\n\nCustom draft transcript.\n";
+    const raw = { summary: "", transcript: "**{{speaker1}}** [00:00]\nHi.\n\n**{{speaker2}}** [00:04]\nHey.", speakerNames: { "1": "Saved Alex", "2": "Saved Sam" } };
+    let summaryBody: Record<string, unknown> | null = null;
+    apiForBundleMock.mockImplementation(async (_bundle: string | null, url: string, options?: { body?: string }) => {
+      if (url.endsWith("/summarize")) { summaryBody = JSON.parse(options?.body ?? "{}"); return { result: { ...raw, summary: "- Done" } }; }
+      return { session, result: raw };
+    });
+    const drafts = {
+      createDraft: vi.fn(() => "untitled:one"),
+      getDraftContent: vi.fn(() => draft),
+      getDraftDocument: vi.fn(() => undefined),
+      isDraftOpen: vi.fn(() => true),
+      updateDraftContent: vi.fn(),
+      openDraft: vi.fn(),
+    };
+    const { result } = renderHook(() => useTranscription({ drafts, setMessage: vi.fn(), sourceBundleId: "bundle-a" }));
+    await act(async () => { await result.current.actions.openTranscript(session); });
+    apiMock.mockResolvedValue([]);
+    await act(async () => { result.current.actions.regenerateSummary(session); });
+    await waitFor(() => expect(summaryBody).not.toBeNull());
+    expect(summaryBody).toEqual({});
+    expect(drafts.updateDraftContent).not.toHaveBeenCalled();
+    expect(drafts.getDraftContent("untitled:one")).toContain("Custom draft transcript.");
+  });
+});

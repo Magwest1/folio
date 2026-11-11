@@ -1,0 +1,93 @@
+import type { DesktopUpdateState } from "../../../domain/types.ts";
+
+export type ObsidianImportCounts = {
+  new: number;
+  imported: number;
+  changed: number;
+  retryable: number;
+  invalid: number;
+  attachments: number;
+};
+
+export type ObsidianImportScan = {
+  id: string;
+  vaultId: string;
+  name: string;
+  provider: "electron" | "browser";
+  total: number;
+  counts: ObsidianImportCounts;
+  requiredUploads: string[];
+};
+
+export type ObsidianImportPhase =
+  | "staging"
+  | "planning"
+  | "writing"
+  | "indexing"
+  | "completed"
+  | "cancelled"
+  | "failed";
+
+export type ObsidianImportJob = {
+  id: string;
+  scanId: string;
+  phase: ObsidianImportPhase;
+  processed: number;
+  total: number;
+  imported: number;
+  failed: number;
+  unresolvedLinks: number;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+};
+
+export type BrowserVaultSelection = {
+  scan: ObsidianImportScan;
+  files: Map<string, File>;
+};
+
+export type ObsidianImportSettings = {
+  supported: boolean;
+  busy: boolean;
+  scan: ObsidianImportScan | null;
+  job: ObsidianImportJob | null;
+  error: string;
+  selectVault: () => void;
+  confirmImport: () => void | Promise<void>;
+  cancelImport: () => void;
+  clearScan: () => void;
+};
+
+/** macOS screen-recording permission, which also gates system audio capture. */
+export type ScreenCaptureAccess = 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
+
+declare global {
+  interface Window {
+    folio?: {
+      onMenuAction?: (handler: (action: string) => void) => () => void;
+      getStorage?: (key: string) => string | null;
+      setStorage?: (key: string, value: string) => void;
+      removeStorage?: (key: string) => void;
+      closeWindow?: () => void;
+      saveMarkdownExport?: (
+        filename: string,
+        content: string,
+      ) => Promise<{ canceled: boolean }>;
+      savePdfExport?: (filename: string) => Promise<{ canceled: boolean }>;
+      selectObsidianVault?: (bundleId?: string | null) => Promise<ObsidianImportScan | null>;
+      startObsidianImport?: (scanId: string) => Promise<ObsidianImportJob>;
+      getObsidianImportJob?: (jobId: string) => Promise<ObsidianImportJob>;
+      cancelObsidianImport?: (jobId: string) => Promise<ObsidianImportJob>;
+      selectFolder?: () => Promise<string | null>;
+      systemAudio?: { supported: boolean };
+      getScreenCaptureAccess?: () => Promise<ScreenCaptureAccess>;
+      openSystemAudioSettings?: () => Promise<void>;
+      getUpdateState?: () => Promise<DesktopUpdateState | null>;
+      checkForUpdates?: () => Promise<DesktopUpdateState | null>;
+      startUpdate?: () => Promise<DesktopUpdateState | null>;
+      onUpdateState?: (handler: (state: DesktopUpdateState) => void) => () => void;
+      onPrepareUpdateRestart?: (handler: () => Promise<boolean>) => () => void;
+    };
+  }
+}

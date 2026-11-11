@@ -1,0 +1,497 @@
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { createSerialQueue } from '../core/queue.js'
+import { markdownFromResult, splitTranscript } from './model.js'
+import { createDiarizationSupport } from './diarization.js'
+import { buildTranscriptResult, normalizeSegments } from './segments.js'
+import { folderBytes, installedSnapshot } from './snapshots.js'
+import { DEFAULT_TRANSCRIPTION_MODEL_ID, DIARIZATION_MODELS, DIARIZATION_MODEL_ID, TRANSCRIPTION_MODELS } from './models.js'
+import { createSessionLocks } from './locks.js'
+import { runHelper } from './helper.js'
+import { recordDownloadProgress, summarizeDownloadProgress } from '../mlx/download-progress.js'
+import { createRecordingEdits } from './recording-edits.js'
+
+export const TRANSCRIPTION_MODEL = Object.freeze({
+  id: TRANSCRIPTION_MODELS.whisper.repository,
+  revision: TRANSCRIPTION_MODELS.whisper.revision,
+  downloadSizeBytes: TRANSCRIPTION_MODELS.whisper.downloadSizeBytes,
+})
+const transcriptionQueues = new WeakMap()
+
+function helperPath(projectRoot, configuredPath = null) {
+  if (configuredPath || process.env.FOLIO_MLX_HELPER) return configuredPath || process.env.FOLIO_MLX_HELPER
+  if (process.resourcesPath) return path.join(process.resourcesPath, 'mlx', 'MacOS', 'folio-mlx')
+  return path.join(projectRoot, 'experiments', 'mlx-swift', '.cache', 'staged', 'Folio.app', 'Contents', 'MacOS', 'folio-mlx')
+}
+
+export function createTranscriptionService(runtime) {
+  const serial = runtime.mlxService
+    ? (transcriptionQueues.get(runtime.mlxService) || (() => {
+      const queue = createSerialQueue()
+      transcriptionQueues.set(runtime.mlxService, queue)
+      return queue
+    })())
+    : createSerialQueue()
+  const cacheRoot = path.join(runtime.modelRoot, 'hf-cache')
+  const executable = helperPath(runtime.projectRoot, runtime.mlxHelperPath)
+  const active = new Map()
+  const activeSummaries = new Map()
+  const locks = createSessionLocks()
+  const recordingEdits = createRecordingEdits({
+    storage: runtime.transcriptionStorage,
+    active,
+    locks,
+    maxSpeakers: () => DIARIZATION_MODELS[DIARIZATION_MODEL_ID].maxSpeakers,
+  })
+  const installing = new Map()
+  const installProgress = new Map()
+  const installPromises = new Map()
+  const installControllers = new Map()
+  const available = (runtime.platform ?? process.platform) === 'darwin'
+    && (runtime.architecture ?? process.arch) === 'arm64'
+    && Number((runtime.osRelease?.() ?? os.release()).split('.')[0]) >= 23
+
+  const diarization = createDiarizationSupport({ runtime, cacheRoot, executable, available, isTranscribing: () => active.size > 0, model: runtime.diarizationModel })
+
+  async function localStatus(modelId) {
+    const model = TRANSCRIPTION_MODELS[modelId]
+    let helperAvailable = false
+    try { await fs.access(executable); helperAvailable = available } catch { /* native build has not run */ }
+    const snapshot = await installedSnapshot(cacheRoot, model)
+    const repositoryRoot = path.join(cacheRoot, `models--${model.repository.replaceAll('/', '--')}`)
+    const partialSnapshot = path.join(repositoryRoot, 'snapshots', model.revision)
+    const currentInstallProgress = summarizeDownloadProgress(installProgress.get(modelId) || new Map())
+    const downloadedBytes = installing.has(modelId) ? Math.min(model.downloadSizeBytes, Math.max(
+      currentInstallProgress?.downloadedBytes || 0,
+      await folderBytes(partialSnapshot),
+    )) : 0
+    return {
+      model: model.repository,
+      revision: model.revision,
+      modelId,
+      modelName: model.name,
+      available,
+      helperAvailable,
+      modelState: snapshot ? 'ready' : installing.has(modelId) ? 'downloading' : 'missing',
+      downloadedBytes,
+      totalBytes: model.downloadSizeBytes,
+      downloadPercent: snapshot ? 100 : installing.has(modelId) ? Math.min(99, Math.floor(downloadedBytes / model.downloadSizeBytes * 100)) : 0,
+      canInstall: available && helperAvailable,
+      canTranscribe: available && helperAvailable && Boolean(snapshot),
+      installing: installing.has(modelId),
+    }
+  }
+
+  async function status() {
+    const modelId = runtime.mlxService?.selectedTranscriptionModel
+      ? await runtime.mlxService.selectedTranscriptionModel()
+      : DEFAULT_TRANSCRIPTION_MODEL_ID
+    const local = { ...(await localStatus(modelId)), diarization: await diarization.status() }
+    if (!runtime.mlxService?.status) return local
+    const shared = await runtime.mlxService.status()
+    const whisper = shared.models?.find((model) => model.id === modelId)
+    const progress = shared.downloads?.find((download) => download.id === modelId)?.progress
+    const installed = whisper?.installed ?? (local.modelState === 'ready')
+    const isInstalling = Boolean(progress)
+    const downloadedBytes = progress?.downloadedBytes ?? local.downloadedBytes
+    const totalBytes = progress?.totalBytes ?? local.totalBytes
+    return {
+      ...local,
+      helperAvailable: shared.helperAvailable,
+      modelState: installed ? 'ready' : isInstalling ? 'downloading' : 'missing',
+      downloadedBytes,
+      totalBytes,
+      downloadPercent: progress?.percent ?? local.downloadPercent,
+      canInstall: local.available && shared.helperAvailable,
+      canTranscribe: local.available && shared.helperAvailable && installed,
+      installing: isInstalling,
+    }
+  }
+
+  function taskArgs(modelId, operation, modelDirectory = null) {
+    const model = TRANSCRIPTION_MODELS[modelId]
+    const args = ['--task', 'transcription', '--model', model.repository,
+      '--revision', model.revision, '--operation', operation]
+    if (modelDirectory) args.push('--model-directory', modelDirectory)
+    return args
+  }
+
+  function withProgress(session) {
+    if (!session) return session
+    const operation = active.get(session.id)
+    return { ...session, progressPercent: session.state === 'ready' ? 100 : operation?.progressPercent ?? 0 }
+  }
+
+  async function list() {
+    return (await runtime.transcriptionStorage.listSessions()).map(withProgress)
+  }
+
+  async function installRaw(modelId) {
+    const model = TRANSCRIPTION_MODELS[modelId]
+    if (!available) throw Object.assign(new Error('Local Whisper transcription requires FolioNotes on an Apple Silicon Mac running macOS 14 or later.'), { status: 503 })
+    if (installPromises.has(modelId)) return installPromises.get(modelId)
+    installProgress.delete(modelId)
+    installing.set(modelId, true)
+    const installController = new AbortController()
+    installControllers.set(modelId, installController)
+    const installPromise = (async () => {
+      try {
+        await fs.mkdir(cacheRoot, { recursive: true })
+        const runner = runtime.transcriptionInstaller || runHelper
+        await runner({ executable, args: taskArgs(modelId, 'install'), cacheRoot,
+          signal: installController.signal,
+          onEvent: (event) => {
+            if (!installProgress.has(modelId)) installProgress.set(modelId, new Map())
+            recordDownloadProgress(installProgress.get(modelId), event)
+          },
+        })
+        const snapshot = await installedSnapshot(cacheRoot, model)
+        if (!snapshot) throw new Error('The Whisper model download finished, but its configuration, weights, or tokenizer files are incomplete. Retry the model download.')
+        return status()
+      } finally {
+        installing.delete(modelId)
+        installPromises.delete(modelId)
+        installProgress.delete(modelId)
+        installControllers.delete(modelId)
+      }
+    })()
+    installPromises.set(modelId, installPromise)
+    return installPromise
+  }
+
+  async function install() {
+    const modelId = runtime.mlxService?.selectedTranscriptionModel
+      ? await runtime.mlxService.selectedTranscriptionModel()
+      : DEFAULT_TRANSCRIPTION_MODEL_ID
+    if (!runtime.mlxService?.install) return installRaw(modelId)
+    await runtime.mlxService.install(modelId)
+    return status()
+  }
+
+  function selectModel(id) {
+    return serial(() => runtime.mlxService.selectTranscriptionModel(id))
+  }
+
+  async function transcribe(id, { retranscribe = false } = {}) {
+    if (active.has(id)) throw Object.assign(new Error('This recording is already being transcribed.'), { status: 409 })
+    locks.beginTranscription(id)
+    const selectedModelId = runtime.mlxService?.selectedTranscriptionModel
+      ? await runtime.mlxService.selectedTranscriptionModel()
+      : DEFAULT_TRANSCRIPTION_MODEL_ID
+    return serial(async () => {
+      try {
+      if (locks.deleting.has(id)) throw Object.assign(new Error('Transcription session not found.'), { status: 404 })
+      const session = await runtime.transcriptionStorage.readManifest(id)
+      if (locks.deleting.has(id)) throw Object.assign(new Error('Transcription session not found.'), { status: 404 })
+      if (!session) throw Object.assign(new Error('Transcription session not found.'), { status: 404 })
+      const rerun = retranscribe === true && session.state === 'ready'
+      if (session.state === 'ready' && !rerun) return { session: withProgress(session), result: await runtime.transcriptionStorage.readResult(id) }
+      if (active.has(id)) throw Object.assign(new Error('This recording is already being transcribed.'), { status: 409 })
+      const selectedModel = TRANSCRIPTION_MODELS[selectedModelId]
+      const snapshot = await installedSnapshot(cacheRoot, selectedModel)
+      if (!snapshot) throw Object.assign(new Error(`Download ${selectedModel.repository} in the Transcription tab before starting.`), { status: 409 })
+      if (!(await runtime.transcriptionStorage.hasRecording(session))) {
+        throw Object.assign(new Error('The audio file is missing. Re-import it to continue.'), { status: 409 })
+      }
+      // Speaker labels always run when the speaker model is installed; without it the transcript has none.
+      const identifySpeakers = await diarization.isReady()
+      const controller = new AbortController()
+      let finishActive
+      const finished = new Promise((resolve) => { finishActive = resolve })
+      active.set(id, { controller, finished, finish: finishActive, progress: 'Loading local Whisper model…', progressPercent: 0 })
+      // Whisper owns the first 85% of the bar when speakers are identified afterwards.
+      const reportProgress = (percent, base, share) => {
+        const current = active.get(id)
+        if (current?.controller === controller && Number.isInteger(percent) && percent >= 0 && percent <= 99) {
+          current.progressPercent = Math.max(current.progressPercent, base + Math.floor(percent * share))
+        }
+      }
+      const onProgress = (percent) => reportProgress(percent, 0, identifySpeakers ? 0.85 : 1)
+      await runtime.transcriptionStorage.writeManifest({ ...session, state: 'transcribing', error: null })
+      try {
+        const request = { id: randomUUID(), operation: 'transcribe', audioPath: runtime.transcriptionStorage.recordingPath(session) }
+        let response
+        if (runtime.transcriptionRunner) {
+          const runner = runtime.transcriptionRunner
+          const runTranscription = () => runner({ executable, args: taskArgs(selectedModelId, 'transcribe', snapshot), cacheRoot, request, signal: controller.signal,
+            onEvent: (event) => {
+              if (event.event === 'transcription-progress' && event.id === request.id) onProgress(event.percent)
+              else if (event.event === 'ready') {
+                const current = active.get(id)
+                if (current) current.progress = 'Transcribing audio locally…'
+              }
+            },
+            timeoutMs: 6 * 60 * 60_000,
+          })
+          response = runtime.mlxService?.withModelActivity
+            ? await runtime.mlxService.withModelActivity(selectedModelId, runTranscription)
+            : await runTranscription()
+        } else if (runtime.mlxService?.transcribe) {
+          active.get(id).progress = 'Loading local Whisper model…'
+          response = await runtime.mlxService.transcribe(runtime.transcriptionStorage.recordingPath(session), {
+            signal: controller.signal,
+            modelId: selectedModelId,
+            onProgress,
+          })
+          const current = active.get(id)
+          if (current) current.progress = 'Transcribing audio locally…'
+        } else {
+          response = await runHelper({ executable, args: taskArgs(selectedModelId, 'transcribe', snapshot), cacheRoot, request, signal: controller.signal,
+            onEvent: (event) => {
+              if (event.event === 'transcription-progress' && event.id === request.id) onProgress(event.percent)
+              else if (event.event === 'ready') {
+                const current = active.get(id)
+                if (current) current.progress = 'Transcribing audio locally…'
+              }
+            },
+            timeoutMs: 6 * 60 * 60_000,
+          })
+        }
+        if (typeof response.text !== 'string' || !response.text.trim()) throw new Error('Whisper did not recognize speech in this recording. Check that it contains clear speech, then retry.')
+        const segments = normalizeSegments(response.segments)
+        let speakerTurns = null
+        let speakerWarning = null
+        if (identifySpeakers && !segments.length) {
+          speakerWarning = 'The transcription helper did not return segment timestamps, so speaker labels were skipped.'
+        } else if (identifySpeakers) {
+          const current = active.get(id)
+          if (current) current.progress = 'Identifying speakers locally…'
+          try {
+            speakerTurns = await diarization.run({ audioPath: runtime.transcriptionStorage.recordingPath(session), signal: controller.signal,
+              onProgress: (percent) => reportProgress(percent, 85, 0.14) })
+            if (!speakerTurns.length) speakerWarning = 'No speaker turns were detected, so the transcript has timestamps only.'
+          } catch (speakerError) {
+            // Keep the finished transcript; only cancellation aborts the job.
+            if (controller.signal.aborted || speakerError?.code === 'TRANSCRIPTION_CANCELLED') throw speakerError
+            speakerWarning = `Speaker labels could not be added: ${speakerError instanceof Error ? speakerError.message : 'unknown error'}`
+          }
+        }
+        const built = buildTranscriptResult(response.text, segments, speakerTurns)
+        const result = { summary: '', ...built, ...(speakerWarning ? { speakerWarning } : {}),
+          markdown: markdownFromResult({ summary: '', transcript: built.transcript }, built.transcript), generatedAt: new Date().toISOString() }
+        await runtime.transcriptionStorage.writeResult(id, result)
+        const ready = await runtime.transcriptionStorage.writeManifest({ ...(await runtime.transcriptionStorage.readManifest(id)), state: 'ready', error: null })
+        return { session: withProgress(ready), result }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Transcription failed.'
+        const latest = await runtime.transcriptionStorage.readManifest(id)
+        // A re-run never loses the transcript it was replacing: result.json is untouched, so the session stays ready.
+        if (latest) await runtime.transcriptionStorage.writeManifest(rerun ? { ...latest, state: 'ready', error: null } : { ...latest, state: 'failed', error: message })
+        throw error
+      } finally { active.get(id)?.finish(); active.delete(id) }
+      } finally { locks.pendingTranscriptions.delete(id) }
+    })
+  }
+
+  async function cancel(id) {
+    const current = active.get(id)
+    if (!current) return runtime.transcriptionStorage.readManifest(id)
+    current.controller.abort()
+    await current.finished
+    return runtime.transcriptionStorage.readManifest(id)
+  }
+
+  async function updateOptions(id, { identifySpeakers }) {
+    const session = await runtime.transcriptionStorage.readManifest(id)
+    if (!session) throw Object.assign(new Error('Transcription session not found.'), { status: 404 })
+    if (active.has(id) || locks.pendingTranscriptions.has(id) || session.state === 'transcribing') {
+      throw Object.assign(new Error('Speaker labels cannot be changed while a transcription is running.'), { status: 409 })
+    }
+    return runtime.transcriptionStorage.writeManifest({ ...session, identifySpeakers: identifySpeakers === true })
+  }
+
+  async function updateDraftId(id, draftId) {
+    const session = await runtime.transcriptionStorage.readManifest(id)
+    if (!session) throw Object.assign(new Error('Transcription session not found.'), { status: 404 })
+    return runtime.transcriptionStorage.writeManifest({ ...session, draftId: typeof draftId === 'string' ? draftId.slice(0, 500) : null })
+  }
+
+  async function remapDraft(oldId, newId, bundleId) {
+    if (typeof oldId !== 'string' || typeof newId !== 'string' || !oldId || !newId || oldId.length > 500 || newId.length > 500) {
+      throw Object.assign(new Error('Invalid transcript note association.'), { status: 400 })
+    }
+    const sessions = await runtime.transcriptionStorage.listSessions()
+    const updated = []
+    for (const session of sessions) {
+      if (session.draftId !== oldId || (session.sourceBundleId ?? null) !== (bundleId ?? null)) continue
+      updated.push(await runtime.transcriptionStorage.writeManifest({ ...session, draftId: newId }))
+    }
+    return updated.length
+  }
+
+  function resolveTranscriptNames(result) {
+    return String(result.transcript || '').replace(/\{\{\s*speaker(\d{1,3})\s*\}\}/gi, (_match, digits) => result.speakerNames?.[digits] || `Speaker ${Number(digits)}`)
+  }
+
+  async function summarize(id) {
+    locks.beginSummary(id)
+    try {
+    const session = await runtime.transcriptionStorage.readManifest(id)
+    if (locks.deleting.has(id)) throw Object.assign(new Error('Transcription session not found.'), { status: 404 })
+    if (!session) throw Object.assign(new Error('Transcription session not found.'), { status: 404 })
+    if (activeSummaries.has(id)) throw Object.assign(new Error('A summary is already being generated for this audio.'), { status: 409 })
+    const controller = new AbortController()
+    let finishSummary
+    const finished = new Promise((resolve) => { finishSummary = resolve })
+    activeSummaries.set(id, { controller, finished, finish: finishSummary })
+    try {
+      const sourceResult = await runtime.transcriptionStorage.readResult(id)
+      if (!sourceResult) throw Object.assign(new Error('Transcription result not found.'), { status: 404 })
+      const content = resolveTranscriptNames(sourceResult)
+      if (!content) throw Object.assign(new Error('Add transcript text before generating a summary.'), { status: 400 })
+      if (content.length > 250_000) throw Object.assign(new Error('The transcript is too long to summarize safely. Shorten it and try again.'), { status: 413 })
+      const pieces = splitTranscript(content, 10_000)
+      const summaries = []
+      for (const piece of pieces) {
+        const generated = await runtime.mlxService.generate([
+          { role: 'system', content: 'Write a concise factual summary of the supplied transcript in Markdown bullets. Keep names, numbers, dates, decisions, and uncertainty accurate. Do not infer facts that are not stated. The transcript may contain [mm:ss] timestamps and bold speaker names at the start of each turn (for example **Speaker 1** or **Alex**); use the names to attribute statements and decisions exactly as written, but do not copy timestamps into the summary.' },
+          { role: 'user', content: `<transcript>\n${piece}\n</transcript>` },
+        ], { maxTokens: 384, temperature: 0 })
+        if (controller.signal.aborted) throw Object.assign(new Error('Summary cancelled. The saved recording was kept.'), { code: 'SUMMARY_CANCELLED', status: 409 })
+        const summary = String(generated.text || '').trim()
+        if (!summary) throw new Error('The selected local language model returned an empty summary.')
+        summaries.push(summary)
+      }
+      let finalPieces = summaries
+      while (finalPieces.length > 1) {
+        const batches = []
+        let batch = ''
+        for (const item of finalPieces) {
+          if (batch && `${batch}\n- ${item}`.length > 10_000) { batches.push(batch); batch = `- ${item}` }
+          else batch = batch ? `${batch}\n- ${item}` : `- ${item}`
+        }
+        if (batch) batches.push(batch)
+        finalPieces = []
+        for (const batchContent of batches) {
+          const generated = await runtime.mlxService.generate([
+            { role: 'system', content: 'Combine these notes into a concise factual summary in Markdown bullets. Preserve names, dates, decisions, and uncertainty. Do not add facts.' },
+            { role: 'user', content: batchContent },
+          ], { maxTokens: 384, temperature: 0 })
+          if (controller.signal.aborted) throw Object.assign(new Error('Summary cancelled. The saved recording was kept.'), { code: 'SUMMARY_CANCELLED', status: 409 })
+          finalPieces.push(String(generated.text || '').trim())
+        }
+      }
+      const summary = finalPieces[0] || ''
+      if (!summary) throw new Error('The selected local language model returned an empty summary.')
+      const saved = await recordingEdits.editSegments(id, (latest) => {
+        if (resolveTranscriptNames(latest) !== content) throw Object.assign(new Error('The transcript changed while the summary was being generated. Summarize again.'), { status: 409 })
+        if (controller.signal.aborted) throw Object.assign(new Error('Summary cancelled. The saved recording was kept.'), { code: 'SUMMARY_CANCELLED', status: 409 })
+        return { ...latest, summary, summaryGeneratedAt: new Date().toISOString(), markdown: markdownFromResult({ summary, transcript: latest.transcript }, latest.transcript) }
+      })
+      // Bump the manifest so open players notice the saved summary and reload the result.
+      const touched = await runtime.transcriptionStorage.readManifest(id)
+      if (touched) await runtime.transcriptionStorage.writeManifest(touched)
+      return saved
+    } catch (error) {
+      if (controller.signal.aborted) throw Object.assign(new Error('Summary cancelled. The saved recording was kept.'), { code: 'SUMMARY_CANCELLED', status: 409 })
+      if ([400, 404, 409, 413].includes(error?.status)) throw error
+      const detail = error instanceof Error ? error.message : 'Unknown local summary error.'
+      throw Object.assign(new Error(`Could not generate a local summary. Install and start a text generation model in Settings, then retry. ${detail}`), { status: 503 })
+    } finally {
+      activeSummaries.get(id)?.finish()
+      activeSummaries.delete(id)
+    }
+    } finally { locks.pendingSummaries.delete(id) }
+  }
+
+  async function cancelSummary(id) {
+    const current = activeSummaries.get(id)
+    if (!current) return false
+    current.controller.abort()
+    await current.finished
+    return true
+  }
+
+  async function createFileSession({ fileName, sourceNoteId = null, sourceBundleId = null, durationMs = null, identifySpeakers = false }) {
+    return runtime.transcriptionStorage.createSession({ id: randomUUID(), fileName, audioExtension: path.extname(fileName).toLowerCase(), sourceNoteId, sourceBundleId, durationMs, identifySpeakers })
+  }
+
+  async function getSession(id) {
+    const session = await runtime.transcriptionStorage.readManifest(id)
+    if (!session) return null
+    return { session: withProgress(session), result: await runtime.transcriptionStorage.readResult(id) }
+  }
+
+  function beginUpload(id) {
+    if (active.has(id) || activeSummaries.has(id)) throw Object.assign(new Error('Wait for this transcription activity to finish before uploading audio.'), { status: 409 })
+    locks.beginUpload(id)
+  }
+  function endUpload(id) { locks.activeUploads.delete(id) }
+  async function deleteSession(id) {
+    locks.beginDelete(id, active, activeSummaries)
+    try { await runtime.transcriptionStorage.deleteSession(id) } finally { locks.deleting.delete(id) }
+  }
+
+  async function close() {
+    for (const controller of installControllers.values()) controller.abort()
+    const jobs = [...active.values()]
+    for (const operation of jobs) operation.controller.abort()
+    const summaries = [...activeSummaries.values()]
+    for (const operation of summaries) operation.controller.abort()
+    await Promise.allSettled([...installPromises.values(), ...jobs.map((job) => job.finished), ...summaries.map((job) => job.finished)].filter(Boolean))
+  }
+
+  for (const model of Object.values(TRANSCRIPTION_MODELS)) {
+    runtime.mlxService?.registerExternalModel?.(model.id, {
+      snapshot: () => installedSnapshot(cacheRoot, model),
+      status: async () => {
+        const current = await localStatus(model.id)
+        return {
+          installed: current.modelState === 'ready',
+          loading: current.installing,
+          progress: current.installing ? {
+            downloadedBytes: current.downloadedBytes,
+            totalBytes: current.totalBytes,
+            percent: current.downloadPercent,
+            phase: current.modelState === 'ready' ? 'loading' : 'downloading',
+          } : null,
+        }
+      },
+      install: async () => {
+        await installRaw(model.id)
+        return runtime.mlxService.status()
+      },
+      remove: async () => {
+        if (installPromises.has(model.id) || active.size) throw Object.assign(new Error('Wait for Whisper activity to finish before removing it.'), { statusCode: 409 })
+        const repositoryRoot = path.join(cacheRoot, `models--${model.repository.replaceAll('/', '--')}`)
+        await fs.rm(repositoryRoot, { recursive: true, force: true })
+        return runtime.mlxService.status()
+      },
+      close,
+    })
+  }
+
+  diarization.register()
+
+  return {
+    status,
+    install,
+    selectModel,
+    installDiarization: diarization.install,
+    updateOptions,
+    reassignSpeaker: recordingEdits.reassignSpeaker,
+    renameSpeaker: recordingEdits.renameSpeaker,
+    splitSegment: recordingEdits.splitSegment,
+    mergeSegment: recordingEdits.mergeSegment,
+    mergeSpeakers: recordingEdits.mergeSpeakers,
+    transcribe,
+    cancel,
+    updateDraftId,
+    remapDraft,
+    summarize,
+    cancelSummary,
+    createFileSession,
+    getSession,
+    beginUpload,
+    endUpload,
+    deleteSession,
+    list,
+    recoverInterrupted: runtime.transcriptionStorage.recoverInterrupted,
+    close,
+    storage: runtime.transcriptionStorage,
+    active,
+    activeSummaries,
+  }
+}

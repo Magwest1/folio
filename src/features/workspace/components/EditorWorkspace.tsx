@@ -1,0 +1,117 @@
+import { Fragment } from "react";
+import type { CSSProperties } from "react";
+import { useWorkspaceEditorUi } from "../hooks/useWorkspaceEditorUi.ts";
+import { EditorGroup } from "./EditorGroup.tsx";
+import type { EditorWorkspaceProps } from "../types.ts";
+import { WorkspaceSplitHandle } from "./WorkspaceSplitHandle.tsx";
+import { filingOwnerGroupIds } from "../model/filing.ts";
+
+export function EditorWorkspace({ model, actions, paneControls, historyPreview }: EditorWorkspaceProps) {
+  const ui = useWorkspaceEditorUi();
+  const owners = filingOwnerGroupIds(
+    model.groups,
+    model.activeGroupId,
+    model.filingQueues,
+  );
+  const groupModel = {
+    activeGroupId: model.activeGroupId,
+    documents: model.documents,
+    loadingDocuments: model.loadingDocuments,
+    savingDocuments: model.savingDocuments,
+    editingKey: model.editingKey,
+    drafts: model.drafts,
+    deletingNoteId: model.deletingNoteId,
+    movingFileId: model.movingFileId,
+    exportingNoteId: model.exportingNoteId,
+    filingDirectories: model.filingDirectories,
+    filingQueues: model.filingQueues,
+    refileEntries: model.refileEntries,
+    filingOwnerGroupIds: owners,
+    editorFocusRequest: model.editorFocusRequest,
+  };
+  const groupActions = {
+    activateGroup: actions.activateGroup,
+    moveTabToGroup: actions.moveTabToGroup,
+    titleForId: actions.titleForId,
+    activateTab: actions.activateTab,
+    pinTab: actions.pinTab,
+    consumeEditorFocusRequest: actions.consumeEditorFocusRequest,
+    createNewTab: actions.createNewTab,
+    splitWorkspace: actions.splitWorkspace,
+    closeGroup: actions.closeGroup,
+    closeTab: actions.closeTab,
+    changeDraftContent: actions.changeDraftContent,
+    fileDraft: actions.fileDraft,
+    notifyMessage: actions.notifyMessage,
+    changeFilingFields: actions.changeFilingFields,
+    revealStandaloneFiling: actions.revealStandaloneFiling,
+    confirmFiling: actions.confirmFiling,
+    dismissFiling: actions.dismissFiling,
+    startRefile: actions.startRefile,
+    changeRefileFields: actions.changeRefileFields,
+    acceptRefile: actions.acceptRefile,
+    dismissRefile: actions.dismissRefile,
+    beginEditing: actions.beginEditing,
+    finishEditing: actions.finishEditing,
+    openDocument: actions.openDocument,
+    toggleTaskCheckbox: actions.toggleTaskCheckbox,
+    deleteFiledNote: actions.deleteFiledNote,
+    persistDocument: actions.persistDocument,
+    persistMetadata: actions.persistMetadata,
+    moveBundleFile: actions.moveBundleFile,
+    exportDocument: actions.exportDocument,
+    deliverTranslatedExport: actions.deliverTranslatedExport,
+    getDocumentScrollTop: actions.getDocumentScrollTop,
+    rememberDocumentScrollTop: actions.rememberDocumentScrollTop,
+    getDocumentSelection: actions.getDocumentSelection,
+    rememberDocumentSelection: actions.rememberDocumentSelection,
+  };
+
+  return (
+    <section className="editor-workspace">
+      <div
+        className={`editor-groups ${model.groups.length === 2 ? "is-split" : ""}`}
+        style={{ "--split-position": `${model.splitPosition}%` } as CSSProperties}
+      >
+        {model.groups.map((group, groupIndex) => (
+        <Fragment key={group.id}>
+          {groupIndex === 1 && (
+            <WorkspaceSplitHandle
+              splitPosition={model.splitPosition}
+              onPointerDown={actions.beginHorizontalResize}
+              onResize={actions.resizeSplit}
+              onPointerEnd={actions.finishHorizontalResize}
+              onReset={actions.resetSplit}
+            />
+          )}
+          <EditorGroup
+            group={group}
+            groupCount={model.groups.length}
+            model={groupModel}
+            actions={groupActions}
+            ui={ui}
+            historyPreview={historyPreview?.groupId === group.id && historyPreview.documentId === group.activeId ? historyPreview : undefined}
+            paneControls={paneControls ? {
+              ...paneControls,
+              leftOpen: groupIndex > 0 || paneControls.leftOpen,
+              rightOpen: groupIndex < model.groups.length - 1 || paneControls.rightOpen,
+            } : undefined}
+          />
+        </Fragment>
+        ))}
+      </div>
+      {model.message && (
+        <button
+          type="button"
+          className="workspace-message"
+          onClick={actions.dismissMessage}
+          title="Dismiss"
+          role="status"
+          aria-live="polite"
+        >
+          {model.message}
+        </button>
+      )}
+    </section>
+  );
+}

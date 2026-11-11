@@ -1,0 +1,319 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
+import type { Bundle, TreeDirectory, ViewerDocument } from "../../../domain/types.ts";
+import type { ExplorerContextMenuState, ExplorerContextTarget, ExplorerFileActions } from "../model/explorer.ts";
+import { ExplorerContextMenu } from "./ExplorerContextMenu.tsx";
+import { FileTree } from "./FileTree.tsx";
+
+export type WorkspaceExplorerProps = {
+  explorerScrollTop: number;
+  onExplorerScroll: (scrollTop: number) => void;
+  filesLoading: boolean;
+  localDraftDocuments: ViewerDocument[];
+  drafts: Record<string, string>;
+  draftTitle: (value: string) => string;
+  openLocalDraft: (id: string) => void;
+  deleteLocalDraft: (id: string) => Promise<void>;
+  deletingDraftIds: Set<string>;
+  savingDocuments: Set<string>;
+  fileTree: TreeDirectory;
+  expandedDirectories: Set<string>;
+  draggedFileId: string | null;
+  dropDirectoryPath: string | null;
+  movingFileId: string | null;
+  blockedFileIds: Set<string>;
+  activeFileId: string | null;
+  activeFileDirectory: string | null;
+  activeFileRevealRequest: number;
+  setExpandedDirectories: Dispatch<SetStateAction<Set<string>>>;
+  openDocument: (id: string, source?: "note" | "file", targetGroupId?: string, disposition?: "preview" | "permanent") => Promise<void>;
+  setDraggedFileId: Dispatch<SetStateAction<string | null>>;
+  setDropDirectoryPath: Dispatch<SetStateAction<string | null>>;
+  moveBundleFile: (id: string, directory: string) => Promise<void>;
+  bundles: Bundle[];
+  activeBundleId: string | null;
+  selectBundle: (id: string) => void;
+  openSettings: () => void;
+  actions: ExplorerFileActions;
+  setMessage: (message: string) => void;
+};
+
+export function WorkspaceExplorer(props: WorkspaceExplorerProps) {
+  const [collapsedBundle, setCollapsedBundle] = useState<{
+    bundleId: string;
+    revealRequest: number;
+  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<(ExplorerContextMenuState & { bundleId: string | null }) | null>(null);
+  const treeScrollRef = useRef<HTMLDivElement>(null);
+  const activeFileRevealFrameRef = useRef<number | null>(null);
+  const {
+    explorerScrollTop,
+    onExplorerScroll,
+    filesLoading,
+    localDraftDocuments,
+    drafts,
+    draftTitle,
+    openLocalDraft,
+    deleteLocalDraft,
+    deletingDraftIds,
+    savingDocuments,
+    fileTree,
+    expandedDirectories,
+    draggedFileId,
+    dropDirectoryPath,
+    movingFileId,
+    blockedFileIds,
+    activeFileId,
+    activeFileDirectory,
+    activeFileRevealRequest,
+    setExpandedDirectories,
+    openDocument,
+    setDraggedFileId,
+    setDropDirectoryPath,
+    moveBundleFile,
+    bundles,
+    activeBundleId,
+    selectBundle,
+    openSettings,
+    actions,
+    setMessage,
+  } = props;
+  if (contextMenu && contextMenu.bundleId !== activeBundleId) setContextMenu(null);
+  const cancelPendingActiveFileReveal = useCallback(() => {
+    if (activeFileRevealFrameRef.current === null) return;
+    window.cancelAnimationFrame(activeFileRevealFrameRef.current);
+    activeFileRevealFrameRef.current = null;
+  }, []);
+  const activeDraftRevealable = Boolean(activeFileId) &&
+    localDraftDocuments.some((draft) => draft.id === activeFileId);
+  const activeBundle = bundles.find((bundle) => bundle.id === activeBundleId);
+  const collapsedForActiveBundle = collapsedBundle?.bundleId === activeBundleId &&
+    collapsedBundle.revealRequest === activeFileRevealRequest;
+  useEffect(() => {
+    const element = treeScrollRef.current;
+    if (
+      element &&
+      !filesLoading &&
+      !collapsedForActiveBundle &&
+      element.scrollTop !== explorerScrollTop
+    )
+      element.scrollTop = explorerScrollTop;
+  }, [activeBundleId, collapsedForActiveBundle, explorerScrollTop, filesLoading]);
+
+  useEffect(() => {
+    if (!activeFileId || filesLoading) return;
+    if (activeFileDirectory) {
+      const ancestors = new Set<string>(["/"]);
+      let currentPath = "";
+      for (const segment of activeFileDirectory.split("/").filter(Boolean)) {
+        currentPath += `/${segment}`;
+        ancestors.add(currentPath);
+      }
+      setExpandedDirectories((current) => {
+        if ([...ancestors].every((path) => current.has(path))) return current;
+        return new Set([...current, ...ancestors]);
+      });
+    } else if (!activeDraftRevealable) return;
+    const frame = window.requestAnimationFrame(() => {
+      activeFileRevealFrameRef.current = null;
+      const tree = treeScrollRef.current;
+      const row = tree && Array.from(tree.querySelectorAll<HTMLElement>(".tree-file[data-file-id]"))
+        .find((candidate) => candidate.dataset.fileId === activeFileId);
+      if (!tree || !row) return;
+      const treeBounds = tree.getBoundingClientRect();
+      const rowBounds = row.getBoundingClientRect();
+      if (rowBounds.top < treeBounds.top)
+        tree.scrollTop += rowBounds.top - treeBounds.top;
+      else if (rowBounds.bottom > treeBounds.bottom)
+        tree.scrollTop += rowBounds.bottom - treeBounds.bottom;
+    });
+    activeFileRevealFrameRef.current = frame;
+    return () => {
+      if (activeFileRevealFrameRef.current === frame)
+        cancelPendingActiveFileReveal();
+    };
+  }, [activeDraftRevealable, activeFileDirectory, activeFileId, activeFileRevealRequest, cancelPendingActiveFileReveal, filesLoading, setExpandedDirectories]);
+
+  const closeContextMenu = useCallback((restoreFocus = true) => {
+    const anchor = contextMenu?.anchor;
+    setContextMenu(null);
+    if (restoreFocus && anchor?.isConnected) window.requestAnimationFrame(() => anchor.focus());
+  }, [contextMenu]);
+
+  function showContextMenu(
+    target: ExplorerContextTarget,
+    x: number,
+    y: number,
+    anchor: HTMLElement,
+  ) {
+    setContextMenu({ target, x, y, anchor, bundleId: activeBundleId });
+  }
+
+  function handleBundleClick(bundleId: string) {
+    if (bundleId === activeBundleId) {
+      setCollapsedBundle((current) =>
+        current?.bundleId === bundleId && current.revealRequest === activeFileRevealRequest
+          ? null
+          : { bundleId, revealRequest: activeFileRevealRequest },
+      );
+      return;
+    }
+    setContextMenu(null);
+    setCollapsedBundle(null);
+    selectBundle(bundleId);
+  }
+
+  function openRootContextMenu(event: React.MouseEvent<HTMLDivElement>) {
+    if ((event.target as Element).closest(".tree-row")) return;
+    event.preventDefault();
+    if (activeBundle) showContextMenu({ kind: "directory", path: "/" }, event.clientX, event.clientY, event.currentTarget);
+  }
+
+  return (
+    <>
+      {bundles.length > 0 ? (
+        <div className="bundle-explorer-list" aria-label="Bundles">
+          {bundles.map((bundle) => {
+            const active = bundle.id === activeBundleId;
+            const collapsedForCurrentActivation = collapsedBundle?.bundleId === bundle.id &&
+              collapsedBundle.revealRequest === activeFileRevealRequest;
+            const expanded = active && !collapsedForCurrentActivation;
+            return (
+              <div
+                className={`bundle-explorer-root${active ? " active" : ""}${expanded ? " expanded" : ""}`}
+                key={bundle.id}
+              >
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  aria-controls={active ? `bundle-tree-${bundle.id}` : undefined}
+                  className={`bundle-explorer-heading${active ? " active" : ""}${expanded ? " expanded" : ""}`}
+                  onClick={() => handleBundleClick(bundle.id)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    if (!active) return;
+                    showContextMenu({ kind: "directory", path: "/" }, event.clientX, event.clientY, event.currentTarget);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+                    event.preventDefault();
+                    if (!active) return;
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    showContextMenu({ kind: "directory", path: "/" }, bounds.left, bounds.bottom, event.currentTarget);
+                  }}
+                  title={bundle.markdownPath}
+                >
+                  <span className="bundle-explorer-chevron" aria-hidden="true">›</span>
+                  <span className="bundle-explorer-icon" aria-hidden="true">▱</span>
+                  <span className="bundle-explorer-name">{bundle.name}</span>
+                  {active ? <span className="bundle-explorer-active" aria-label="Active bundle" /> : null}
+                </button>
+                {active && expanded ? (
+                  <div
+                    className="bundle-explorer-content"
+                    id={`bundle-tree-${bundle.id}`}
+                    onContextMenu={openRootContextMenu}
+                  >
+                    <div
+                      className="tree-scroll"
+                      style={{ overflowAnchor: "none" }}
+                      onScroll={(event) => onExplorerScroll(event.currentTarget.scrollTop)}
+                      onPointerDown={cancelPendingActiveFileReveal}
+                      onWheel={cancelPendingActiveFileReveal}
+                      onKeyDown={cancelPendingActiveFileReveal}
+                      ref={treeScrollRef}
+                    >
+                      {filesLoading ? (
+                        <p className="sidebar-empty">Reading bundle...</p>
+                      ) : (
+                        <>
+                          {localDraftDocuments.length ? (
+                            <div className="tree-branch local-drafts">
+                              <div className="tree-row tree-directory static" style={{ "--tree-depth": 0 } as React.CSSProperties}>
+                                <span className="tree-chevron">v</span>
+                                <span className="tree-folder" aria-hidden="true" />
+                                <span>Drafts</span>
+                                <small>{localDraftDocuments.length}</small>
+                              </div>
+                              {localDraftDocuments.map((draft) => (
+                                <div
+                                  className={`tree-row tree-file draft-tree-row${activeFileId === draft.id ? " active" : ""}`}
+                                  style={{ "--tree-depth": 1 } as React.CSSProperties}
+                                  data-file-id={draft.id}
+                                  key={draft.id}
+                                >
+                                  <button type="button" className="draft-tree-open" aria-current={activeFileId === draft.id ? "true" : undefined} onClick={() => openLocalDraft(draft.id)} title="Local draft">
+                                    <span className="tree-file-mark">D</span>
+                                    <span>{draftTitle(drafts[draft.id] ?? draft.content)}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="draft-tree-delete"
+                                    onClick={() => void deleteLocalDraft(draft.id)}
+                                    disabled={deletingDraftIds.has(draft.id) || savingDocuments.has(draft.id)}
+                                    title="Delete draft"
+                                    aria-label={`Delete ${draftTitle(drafts[draft.id] ?? draft.content)}`}
+                                  >
+                                    x
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                          <FileTree
+                            directory={fileTree}
+                            depth={0}
+                            hideRoot
+                            expanded={expandedDirectories}
+                            draggedFileId={draggedFileId}
+                            dropDirectoryPath={dropDirectoryPath}
+                            movingFileId={movingFileId}
+                            blockedFileIds={blockedFileIds}
+                            activeFileId={activeFileId}
+                            onToggle={(path) => setExpandedDirectories((current) => {
+                              const next = new Set(current);
+                              if (next.has(path)) next.delete(path);
+                              else next.add(path);
+                              return next;
+                            })}
+                            onOpen={(id, disposition) => void openDocument(id, "file", undefined, disposition)}
+                            onFileDragStart={setDraggedFileId}
+                            onFileDragEnd={() => {
+                              setDraggedFileId(null);
+                              setDropDirectoryPath(null);
+                            }}
+                            onDirectoryDragOver={setDropDirectoryPath}
+                            onMove={(id, directory) => void moveBundleFile(id, directory)}
+                            onContextMenu={showContextMenu}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="bundle-explorer-empty">
+          <span aria-hidden="true">▱</span>
+          <strong>A space for your notes</strong>
+          <p>Create a bundle or open an existing FolioNotes bundle to get started.</p>
+          <button type="button" className="bundle-setup-cta" onClick={openSettings}>Add or import bundle</button>
+        </div>
+      )}
+      {contextMenu && activeBundle && contextMenu.bundleId === activeBundleId ? (
+        <ExplorerContextMenu
+          key={`${activeBundleId}:${contextMenu.target.kind}:${contextMenu.target.path}`}
+          state={contextMenu}
+          bundlePath={activeBundle.markdownPath}
+          actions={actions}
+          blockedFileIds={blockedFileIds}
+          onDismiss={closeContextMenu}
+          onError={setMessage}
+        />
+      ) : null}
+    </>
+  );
+}

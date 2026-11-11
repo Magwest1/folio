@@ -1,0 +1,516 @@
+import fs from 'node:fs/promises'
+import fsSync from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { app, autoUpdater, BrowserWindow, Menu, desktopCapturer, dialog, ipcMain, screen, session, shell, systemPreferences } from 'electron'
+import packageMetadata from '../package.json' with { type: 'json' }
+import { createUpdaterCoordinator } from './updater.js'
+import { configureStableGithubReleaseFeed } from './update-feed.js'
+
+const isMac = process.platform === 'darwin'
+const preloadPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'preload.cjs')
+
+// The product name changed from Folio to FolioNotes; keep the original userData
+// location so existing renderer storage and model downloads are still found.
+app.setPath('userData', path.join(app.getPath('appData'), 'Folio'))
+
+let mainWindow = null
+let localServer = null
+let localUrl = null
+let localRuntime = null
+let rendererStoragePath = null
+let rendererStorage = {}
+let rendererStorageRevision = 0
+let rendererStorageWriteTimer = null
+let rendererStorageWritePromise = Promise.resolve()
+let rendererStorageSyncFlushRevision = -1
+let updaterCoordinator = null
+let updateFlushRequestId = 0
+let updateFlushTimer = null
+let resolveUpdateFlush = null
+
+function validStorageKey(key) {
+  return typeof key === 'string' && key.startsWith('folio:') && key.length <= 200
+}
+
+async function loadRendererStorage() {
+  rendererStoragePath = path.join(app.getPath('userData'), 'renderer-storage.json')
+  try {
+    const parsed = JSON.parse(await fs.readFile(rendererStoragePath, 'utf8'))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return
+    rendererStorage = Object.fromEntries(
+      Object.entries(parsed).filter(([key, value]) => validStorageKey(key) && typeof value === 'string'),
+    )
+  } catch {
+    rendererStorage = {}
+  }
+}
+
+function saveRendererStorageSync() {
+  if (!rendererStoragePath) return
+  fsSync.mkdirSync(path.dirname(rendererStoragePath), { recursive: true })
+  const tempPath = `${rendererStoragePath}.tmp`
+  fsSync.writeFileSync(tempPath, JSON.stringify(rendererStorage), 'utf8')
+  fsSync.renameSync(tempPath, rendererStoragePath)
+  rendererStorageSyncFlushRevision = rendererStorageRevision
+}
+
+async function persistRendererStorage(snapshot, revision) {
+  if (!rendererStoragePath || revision !== rendererStorageRevision || rendererStorageSyncFlushRevision >= revision) return
+  const tempPath = `${rendererStoragePath}.${process.pid}.${revision}.tmp`
+  try {
+    await fs.mkdir(path.dirname(rendererStoragePath), { recursive: true })
+    await fs.writeFile(tempPath, JSON.stringify(snapshot), 'utf8')
+    if (revision === rendererStorageRevision && rendererStorageSyncFlushRevision < revision)
+      await fs.rename(tempPath, rendererStoragePath)
+    else
+      await fs.rm(tempPath, { force: true })
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => {})
+    console.error('Failed to persist FolioNotes renderer storage:', error)
+  }
+}
+
+function scheduleRendererStoragePersist() {
+  rendererStorageRevision += 1
+  if (rendererStorageWriteTimer !== null) clearTimeout(rendererStorageWriteTimer)
+  rendererStorageWriteTimer = setTimeout(() => {
+    rendererStorageWriteTimer = null
+    const revision = rendererStorageRevision
+    const snapshot = { ...rendererStorage }
+    rendererStorageWritePromise = rendererStorageWritePromise
+      .catch(() => {})
+      .then(() => persistRendererStorage(snapshot, revision))
+      .catch((error) => console.error('Failed to schedule FolioNotes renderer storage:', error))
+  }, 150)
+}
+
+function flushRendererStorageSync() {
+  if (rendererStorageWriteTimer !== null) {
+    clearTimeout(rendererStorageWriteTimer)
+    rendererStorageWriteTimer = null
+  }
+  try {
+    saveRendererStorageSync()
+  } catch (error) {
+    console.error('Failed to flush FolioNotes renderer storage:', error)
+  }
+}
+
+function registerRendererStorage() {
+  ipcMain.on('folio:get-storage', (event, key) => {
+    event.returnValue = validStorageKey(key) ? rendererStorage[key] ?? null : null
+  })
+  ipcMain.on('folio:set-storage', (_event, key, value) => {
+    if (validStorageKey(key) && typeof value === 'string' && value.length <= 2_000_000) {
+      rendererStorage[key] = value
+      scheduleRendererStoragePersist()
+    }
+  })
+  ipcMain.on('folio:remove-storage', (_event, key) => {
+    if (validStorageKey(key)) {
+      delete rendererStorage[key]
+      scheduleRendererStoragePersist()
+    }
+  })
+}
+
+async function pathExists(target) {
+  try {
+    await fs.access(target)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function prepareDataDirectory() {
+  const dataRoot = path.join(app.getPath('documents'), 'Folio')
+
+  if (!(await pathExists(dataRoot))) {
+    const seedRoot = path.join(process.resourcesPath, 'seed-data')
+    if (await pathExists(seedRoot)) {
+      await fs.cp(seedRoot, dataRoot, { recursive: true })
+    }
+  }
+
+  await fs.mkdir(dataRoot, { recursive: true })
+  return dataRoot
+}
+
+function sendToRenderer(action) {
+  return () => {
+    if (!mainWindow) {
+      console.warn(`Ignored menu action "${action}": no window is open.`)
+      return
+    }
+    mainWindow.webContents.send('folio:menu-action', action)
+  }
+}
+
+function exportFilename(value, extension) {
+  const filename = path.basename(String(value || `Untitled.${extension}`))
+  return filename.toLowerCase().endsWith(`.${extension}`)
+    ? filename
+    : `${filename}.${extension}`
+}
+
+async function selectExportPath(filename, extension, name) {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: `Export note as ${name}`,
+    defaultPath: path.join(app.getPath('downloads'), exportFilename(filename, extension)),
+    filters: [{ name, extensions: [extension] }],
+  })
+  return result.canceled ? null : result.filePath
+}
+
+function setApplicationMenu() {
+  const settingsItem = {
+    label: 'Settings…',
+    accelerator: 'CmdOrCtrl+,',
+    click: sendToRenderer('open-settings'),
+  }
+  const template = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        settingsItem,
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    }] : []),
+    {
+      label: 'File',
+      submenu: [
+        { label: 'New Note', accelerator: 'CmdOrCtrl+T', click: sendToRenderer('new-note') },
+        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: sendToRenderer('save') },
+        {
+          label: 'Export',
+          submenu: [
+            { label: 'Markdown…', click: sendToRenderer('export-markdown') },
+            { label: 'PDF…', click: sendToRenderer('export-pdf') },
+          ],
+        },
+        ...(!isMac ? [{ type: 'separator' }, settingsItem] : []),
+        { type: 'separator' },
+        { label: 'Close Tab', accelerator: 'CmdOrCtrl+W', click: sendToRenderer('close-tab') },
+        { label: 'Close Window', accelerator: 'CmdOrCtrl+Shift+W', role: 'close' },
+        ...(!isMac ? [{ type: 'separator' }, { role: 'quit' }] : []),
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'pasteAndMatchStyle' },
+        { role: 'delete' },
+        { role: 'selectAll' },
+        { type: 'separator' },
+        { label: 'Find in Current Note', accelerator: 'CmdOrCtrl+F', click: sendToRenderer('find-in-note') },
+        { label: 'Search Workspace', accelerator: 'CmdOrCtrl+Shift+F', click: sendToRenderer('search') },
+      ],
+    },
+    {
+      label: 'Format',
+      submenu: [
+        { label: 'Bold', accelerator: 'CmdOrCtrl+B', click: sendToRenderer('bold') },
+        { label: 'Italic', accelerator: 'CmdOrCtrl+I', click: sendToRenderer('italic') },
+        { label: 'Link', accelerator: 'CmdOrCtrl+K', click: sendToRenderer('link') },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        ...(app.isPackaged ? [] : [{ role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' }]),
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { type: 'separator' },
+        ...Array.from({ length: 9 }, (_, index) => ({
+          label: `Switch to Tab ${index + 1}`,
+          accelerator: `CmdOrCtrl+${index + 1}`,
+          click: sendToRenderer(`switch-tab-${index + 1}`),
+        })),
+        ...(isMac ? [{ type: 'separator' }, { role: 'front' }] : []),
+      ],
+    },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'FolioNotes on GitHub',
+          click: () => {
+            shell
+              .openExternal('https://github.com/MagnusOlstad/folio')
+              .catch((error) => console.error('Failed to open FolioNotes GitHub page:', error))
+          },
+        },
+      ],
+    },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+async function createWindow() {
+  const { workAreaSize } = screen.getPrimaryDisplay()
+  const width = Math.max(640, Math.min(1280, workAreaSize.width - 48))
+  const height = Math.max(560, Math.min(840, workAreaSize.height - 72))
+
+  mainWindow = new BrowserWindow({
+    width,
+    height,
+    useContentSize: true,
+    center: true,
+    minWidth: 640,
+    minHeight: 560,
+    backgroundColor: '#161816',
+    title: 'FolioNotes',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      preload: preloadPath,
+    },
+  })
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+  await mainWindow.loadURL(localUrl)
+}
+
+const SYSTEM_AUDIO_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+
+// System audio is captured through getDisplayMedia with loopback audio. Only the app's own
+// pages may use it; the video track is dropped by the renderer straight away.
+function registerSystemAudioCapture() {
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    let requesterOrigin = null
+    try { requesterOrigin = new URL(request.securityOrigin || request.frame?.url || '').origin } catch { /* denied below */ }
+    if (!localUrl || requesterOrigin !== localUrl) {
+      callback({})
+      return
+    }
+    desktopCapturer.getSources({ types: ['screen'] })
+      .then((sources) => callback(sources[0] ? { video: sources[0], audio: 'loopback' } : {}))
+      .catch(() => callback({}))
+  })
+  ipcMain.handle('folio:get-screen-capture-access', () => (
+    process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('screen') : 'unknown'
+  ))
+  ipcMain.handle('folio:open-system-audio-settings', async () => {
+    if (process.platform === 'darwin') await shell.openExternal(SYSTEM_AUDIO_SETTINGS_URL)
+  })
+}
+
+async function initializeUpdater() {
+  if (!app.isPackaged || !isMac || updaterCoordinator) return
+
+  try {
+    // electron-updater is CommonJS, so use its default namespace when loading
+    // it from this ESM entrypoint. Dynamic import keeps the development/test
+    // path dependency-free.
+    const { default: electronUpdater, Provider } = await import('electron-updater')
+    const { autoUpdater: electronAutoUpdater } = electronUpdater
+    updaterCoordinator = createUpdaterCoordinator({
+      updater: electronAutoUpdater,
+      resetPrimaryFeed: () => electronAutoUpdater.setFeedURL({ ...packageMetadata.build.publish }),
+      prepareFallbackFeed: () => configureStableGithubReleaseFeed({
+        updater: electronAutoUpdater,
+        Provider,
+        repositoryUrl: packageMetadata.repository.url,
+      }),
+      nativeUpdater: autoUpdater,
+      getWindow: () => mainWindow,
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+      prepareForRestart: prepareRendererForUpdateRestart,
+    })
+    await updaterCoordinator.start()
+  } catch (error) {
+    console.error('Failed to initialize FolioNotes updater:', error)
+  }
+}
+
+function prepareRendererForUpdateRestart() {
+  if (!mainWindow || mainWindow.isDestroyed()) return Promise.resolve(false)
+  if (resolveUpdateFlush) return Promise.resolve(false)
+  updateFlushRequestId += 1
+  const requestId = updateFlushRequestId
+  return new Promise((resolve) => {
+    resolveUpdateFlush = resolve
+    updateFlushTimer = setTimeout(() => {
+      updateFlushTimer = null
+      resolveUpdateFlush = null
+      resolve(false)
+    }, 10_000)
+    mainWindow.webContents.send('folio:prepare-update-restart', requestId)
+  })
+}
+
+app.whenReady().then(async () => {
+  await loadRendererStorage()
+  registerRendererStorage()
+  process.env.FOLIO_VERSION = app.getVersion()
+  process.env.FOLIO_DATA_ROOT = await prepareDataDirectory()
+  process.env.FOLIO_MODEL_ROOT = path.join(app.getPath('userData'), 'models')
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+  process.env.FOLIO_MLX_HELPER = app.isPackaged
+    ? path.join(process.resourcesPath, 'mlx', 'MacOS', 'folio-mlx')
+    : path.join(projectRoot, 'experiments', 'mlx-swift', '.cache', 'staged', 'Folio.app', 'Contents', 'MacOS', 'folio-mlx')
+
+  const { createRuntime } = await import('../server/app.js')
+  const { startServer } = await import('../server/index.js')
+  localRuntime = createRuntime()
+  localServer = await startServer(0, localRuntime)
+  const address = localServer.address()
+  if (!address || typeof address === 'string') throw new Error('Could not determine the local server port.')
+  localUrl = `http://127.0.0.1:${address.port}`
+
+  setApplicationMenu()
+  ipcMain.handle('folio:get-update-state', () => updaterCoordinator?.getState() ?? null)
+  ipcMain.handle('folio:check-for-updates', () => updaterCoordinator?.checkForUpdates() ?? null)
+  ipcMain.handle('folio:start-update', () => updaterCoordinator?.startDownload() ?? null)
+  ipcMain.on('folio:update-save-result', (_event, requestId, saved) => {
+    if (requestId !== updateFlushRequestId || !resolveUpdateFlush) return
+    if (updateFlushTimer !== null) clearTimeout(updateFlushTimer)
+    updateFlushTimer = null
+    const resolve = resolveUpdateFlush
+    resolveUpdateFlush = null
+    resolve(saved === true)
+  })
+  ipcMain.on('folio:close-window', () => {
+    mainWindow?.close()
+  })
+  ipcMain.handle('folio:save-markdown-export', async (_event, filename, content) => {
+    if (typeof content !== 'string') throw new Error('Could not export invalid Markdown content.')
+    const filePath = await selectExportPath(filename, 'md', 'Markdown')
+    if (!filePath) return { canceled: true }
+    await fs.writeFile(filePath, content, 'utf8')
+    return { canceled: false }
+  })
+  ipcMain.handle('folio:save-pdf-export', async (event, filename) => {
+    const filePath = await selectExportPath(filename, 'pdf', 'PDF')
+    if (!filePath) return { canceled: true }
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const previousBackground = win?.getBackgroundColor()
+    // Page margins are painted with the window background; force white so they are not dark.
+    win?.setBackgroundColor('#ffffff')
+    let pdf
+    try {
+      pdf = await event.sender.printToPDF({
+        pageSize: 'A4',
+        printBackground: true,
+        preferCSSPageSize: true,
+        // Inches; mirrors the print stylesheet's @page margin (20mm) so the
+        // margins hold whichever source Chromium prefers.
+        margins: { marginType: 'custom', top: 0.79, bottom: 0.79, left: 0.79, right: 0.79 },
+        displayHeaderFooter: true,
+        headerTemplate: '<span></span>',
+        footerTemplate:
+          '<div style="width:100%;font:8px/1 -apple-system,Helvetica,Arial,sans-serif;color:#888;text-align:center;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
+      })
+    } finally {
+      if (win && !win.isDestroyed() && previousBackground) win.setBackgroundColor(previousBackground)
+    }
+    await fs.writeFile(filePath, pdf)
+    return { canceled: false }
+  })
+  ipcMain.handle('folio:select-obsidian-vault', async (_event, bundleId) => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose Obsidian vault',
+      properties: ['openDirectory'],
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+    const manager = localRuntime.bundleManager
+    const entry = typeof bundleId === 'string' ? manager?.registry.get(bundleId) : null
+    const scan = manager && entry
+      ? await manager.prepare(entry).then(() => manager.run(entry, () => manager.activeRuntime().scanObsidianFilesystem(result.filePaths[0])))
+      : manager
+        ? await manager.preparePending().then(() => manager.runPending(() => manager.activeRuntime().scanObsidianFilesystem(result.filePaths[0])))
+        : localRuntime.scanObsidianFilesystem(result.filePaths[0])
+    return scan
+  })
+  ipcMain.handle('folio:select-folder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose folder',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    return result.canceled || !result.filePaths[0] ? null : result.filePaths[0]
+  })
+  ipcMain.handle('folio:start-obsidian-import', (_event, scanId) => localRuntime.startObsidianImport(scanId))
+  ipcMain.handle('folio:get-obsidian-import-job', (_event, jobId) => localRuntime.getObsidianImportJob(jobId))
+  ipcMain.handle('folio:cancel-obsidian-import', (_event, jobId) => localRuntime.cancelObsidianImport(jobId))
+
+  registerSystemAudioCapture()
+  await createWindow()
+  await initializeUpdater()
+
+  app.on('activate', async () => {
+    if (BrowserWindow.getAllWindows().length === 0) await createWindow()
+  })
+}).catch((error) => {
+  console.error(error)
+  app.quit()
+})
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  updaterCoordinator?.dispose()
+  flushRendererStorageSync()
+  if (updateFlushTimer !== null) clearTimeout(updateFlushTimer)
+  updateFlushTimer = null
+  if (resolveUpdateFlush) {
+    const resolve = resolveUpdateFlush
+    resolveUpdateFlush = null
+    resolve(false)
+  }
+  ipcMain.removeHandler('folio:get-update-state')
+  ipcMain.removeHandler('folio:check-for-updates')
+  ipcMain.removeHandler('folio:start-update')
+  ipcMain.removeAllListeners('folio:update-save-result')
+  ipcMain.removeHandler('folio:save-markdown-export')
+  ipcMain.removeHandler('folio:save-pdf-export')
+  ipcMain.removeHandler('folio:select-obsidian-vault')
+  ipcMain.removeHandler('folio:select-folder')
+  ipcMain.removeHandler('folio:get-screen-capture-access')
+  ipcMain.removeHandler('folio:open-system-audio-settings')
+  ipcMain.removeHandler('folio:start-obsidian-import')
+  ipcMain.removeHandler('folio:get-obsidian-import-job')
+  ipcMain.removeHandler('folio:cancel-obsidian-import')
+  ipcMain.removeAllListeners('folio:get-storage')
+  ipcMain.removeAllListeners('folio:set-storage')
+  ipcMain.removeAllListeners('folio:remove-storage')
+  void localRuntime?.mlxService?.close?.()
+  void localRuntime?.transcriptionService?.close?.()
+  localServer?.close()
+})

@@ -1,0 +1,55 @@
+# AGENTS.md
+
+## Non-Negotiable Repository Rules
+
+- Never perform a remote merge under any circumstance.
+- Never push directly to `main`, `master`, or any default branch. Make every change on a non-default branch and submit it through a pull request.
+- Every implementation task must use a sub-agent for the implementation. Delegate implementation to GPT-6 Luna with high reasoning effort; do not implement the change directly in the coordinating agent. This applies even to small or tightly coupled implementation work. Delegation may be skipped only when no implementation is being performed (for example, read-only investigation, planning, review, or final validation).
+
+## Architecture
+
+- React 19 + Vite + TypeScript frontend, Express API, and Electron shell.
+- Keep `src/App.tsx` and `src/app` as composition only. Colocate workspace UI, hooks, and pure state transitions under `src/features/workspace/{components,hooks,model}`; reserve `src/hooks` for cross-feature lifecycle behavior, `src/domain` for shared types, and `src/lib` for pure helpers/API clients.
+- Import feature modules directly; do not add barrel files or move feature logic back into a monolithic component.
+- Styles load through `src/styles/app.css`; preserve import order and the existing cascade.
+
+## Agent Use
+
+- Codex agents only: prefer GPT-6.1 Sol High for scoping, orchestration, review, and final validation; GPT-6 Luna with high reasoning effort is the required implementation sub-agent. Other agents should ignore this model-selection guidance.
+- Use a GPT-6 Luna sub-agent with high reasoning effort for every implementation task. Parallelize only independent, non-overlapping implementation tasks, and delegate relevant paths, constraints, and acceptance criteria instead of full conversation history.
+- Handoffs should list changed files, decisions, checks, and unresolved issues without passing logs. In Codex workflows, Sol should review the diff and focused evidence without repeating discovery or passing checks; use focused follow-ups for rework.
+
+## Skills
+
+- For substantive React architecture or performance work, use `vercel-react-best-practices` when available. Do not search for or block on it, or load it for routine validation, documentation, styling, or small edits.
+- Apply the skill's React guidance that is relevant to this React 19 + Vite application. Do not apply Next.js-specific guidance unless the task explicitly introduces Next.js code.
+- Repository instructions and explicit user requirements take precedence over general skill guidance.
+
+## Compatibility
+
+- Preserve `/api` contracts, localStorage keys and recovery behavior, keyboard shortcuts, Markdown/OKF formats, and Electron/server behavior unless a task explicitly changes them.
+- Use concrete TypeScript contracts; do not use `any` or `@ts-nocheck` to bridge component boundaries.
+- Keep interaction logic in event handlers and effects for external synchronization/subscriptions. Parallelize independent requests, but avoid speculative memoization or new dependencies.
+
+## Git and Pull Requests
+
+- Every commit subject and pull request title must use Conventional Commits syntax. This is mandatory, including follow-up fixes, documentation changes, and agent-authored commits.
+- Use exactly `<type>: <summary>` or `<type>(<scope>): <summary>`, where `type` is one of `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, or `revert`. A breaking change may use `!` before the colon.
+- Write the summary as a concise, lowercase, imperative description. Valid examples: `refactor: split server into runtime modules`, `fix(server): track the update service module`, and `docs: enforce conventional git metadata`.
+- Invalid examples include `Refactor server into runtime modules`, `fix tracked update service module`, branch names, issue numbers without a type, and titles whose type is not in the allowed list.
+- Before running `git commit`, `gh pr create`, or `gh pr edit --title`, explicitly validate the proposed subject/title against the syntax above. Do not rely on branch names, prior context, or GitHub Actions to catch mistakes.
+- Before creating or editing a pull request, inspect `.github/workflows/conventional-commits.yml` for repository-specific policy changes. Repository workflow configuration takes precedence over examples in this file.
+- After creating or editing a pull request, read the stored title with `gh pr view --json title` and correct it immediately if it is not compliant. Do not report PR creation as complete until this check passes.
+
+## Workflow
+
+- Use the smallest meaningful verification set. Broaden only when affected boundaries, failures, unresolved risk, or the user justify it.
+- Run `npm ci` only when dependencies are missing or `package.json`/`package-lock.json` changed.
+- Documentation-only changes need review plus `git diff --check`, not application tests. For localized code changes, run the nearest Node or Vitest files and lint affected paths when practical.
+- Run `npm run build` for changes affecting TypeScript contracts, imports, bundling, or production output. Run `npm run test:e2e` only for affected cross-layer flows, browser/Electron behavior, or explicit requests; build first.
+- Run the full build, lint, Node, UI, and E2E matrix once for broad, high-risk, release-related, or explicitly requested changes. Otherwise rely on CI for the exhaustive matrix.
+- Rerun only failed or affected checks unless later edits invalidate a pass. Keep output concise and inspect only relevant failure sections.
+- Add tests for new behavior, regressions, and extracted logic with a meaningful contract. Avoid tests that only mirror reversible, low-impact implementation details.
+- Node integration and Playwright tests require loopback ports; Playwright also requires Chromium (`npx playwright install chromium`).
+- Run `npm run test:e2e:local` only when Ollama and the configured local models are available.
+- Keep `package-lock.json` synchronized with dependency changes and finish with `git diff --check`.

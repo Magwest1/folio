@@ -1,0 +1,870 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { BundleDirectory, BundleFile, Note, NoteDetail, ViewerDocument } from "../../../domain/types.ts";
+import { api, apiForBundle, setActiveBundleId } from "../../../lib/api.ts";
+import type { WorkspaceShellProps } from "../components/WorkspaceShell.tsx";
+import { useWorkspaceBootstrap } from "./useWorkspaceBootstrap.ts";
+import { useWorkspaceLayout } from "./useWorkspaceLayout.ts";
+import { useWorkspaceModels } from "./useWorkspaceModels.ts";
+import { useWorkspaceTabs } from "./useWorkspaceTabs.ts";
+import { useWorkspaceDocumentState } from "./useWorkspaceDocumentState.ts";
+import { useWorkspaceDocumentMutations } from "./useWorkspaceDocumentMutations.ts";
+import { useNoteRefile } from "./useNoteRefile.ts";
+import { useWorkspaceDocumentNavigation } from "./useWorkspaceDocumentNavigation.ts";
+import { useWorkspaceExplorerState } from "./useWorkspaceExplorerState.ts";
+import { useWorkspaceSidebarProps } from "./useWorkspaceSidebarProps.ts";
+import { useWorkspaceShortcutActions } from "./useWorkspaceShortcutActions.ts";
+import { useFiledDocumentAutosave } from "./useFiledDocumentAutosave.ts";
+import { useNoteHistoryCheckpoint } from "./useNoteHistoryCheckpoint.ts";
+import { prepareFiledDocumentHistory } from "../model/history-actions.ts";
+import { expandedPathsForFiles, filedDraftContent, isUntitledId } from "../../../lib/workspace.ts";
+import { bundleDirectories } from "../model/directory-suggestions.ts";
+import { deliverTranslatedExport } from "../model/translated-export.ts";
+import { useNoteExport } from "./useNoteExport.ts";
+import { useThemeSettings } from "../../settings/hooks/useThemeSettings.ts";
+import type { SettingsCategory } from "../../settings/model/settings-category.ts";
+import { useObsidianImport } from "../../settings/hooks/useObsidianImport.ts";
+import {
+  useWorkspaceSessionPersistence,
+} from "./useWorkspaceSessionPersistence.ts";
+import { loadWorkspaceSessionState, parseWorkspaceSessionState, reconcileWorkspaceSessionState } from "../model/workspace-state.ts";
+import { readStorageItem, writeStorageItem } from "../../../lib/storage.ts";
+import { useBundleSetup } from "../../settings/hooks/useBundleSetup.ts";
+import { useTranscription } from "../../transcription/hooks/useTranscription.ts";
+
+function draftTitle(content: string) {
+  const firstLine = filedDraftContent(content)
+    .split("\n")
+    .map((line) => line.replace(/^\s*#+\s*/, "").trim())
+    .find(Boolean);
+  return firstLine ? firstLine.slice(0, 48) : "Untitled";
+}
+
+export function useWorkspaceController(): WorkspaceShellProps {
+  const [message, setMessage] = useState("");
+  const [historyCheckpoint, setHistoryCheckpoint] = useState<{
+    documentId: string;
+    scopeId: string;
+    revision: number;
+  } | null>(null);
+  const noteExport = useNoteExport({ setMessage });
+  const themeSettings = useThemeSettings();
+  const openThemeSettings = themeSettings.openSettings;
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("bundles");
+  const openSettings = useCallback((category: SettingsCategory = "bundles") => {
+    setSettingsCategory(category);
+    openThemeSettings();
+  }, [openThemeSettings]);
+  const bundleSetup = useBundleSetup();
+  const rendererBundleId = bundleSetup.activeBundleId || "legacy-bundle";
+  const [initialWorkspaceState] = useState(() =>
+    bundleSetup.activeBundleId ? loadWorkspaceSessionState(rendererBundleId) : null,
+  );
+  const [persistenceBundleId, setPersistenceBundleId] = useState(rendererBundleId);
+  const persistenceEnabled = bundleSetup.ready && persistenceBundleId === rendererBundleId;
+  const [editorFocusRequest, setEditorFocusRequest] = useState<{
+    id: number;
+    groupId: string;
+    documentId: string;
+  } | null>(null);
+  const [activeFileRevealRequest, setActiveFileRevealRequest] = useState(0);
+  const editorFocusRequestIdRef = useRef(0);
+  const embeddingRevisionsRef = useRef(new Map<string, number>());
+  const embeddingFinalizationsRef = useRef(new Map<string, Promise<void>>());
+  const explorer = useWorkspaceExplorerState(setMessage, initialWorkspaceState, rendererBundleId);
+  const {
+    files: explorerFiles,
+    setExplorerScrollTop,
+    setExpandedDirectories,
+    setFiles,
+    setNotes,
+    setDirectories,
+  } = explorer;
+  const refreshAfterObsidianImport = useCallback(async (_job: import("../../settings/model/obsidian-import.ts").ObsidianImportJob, bundleId: string | null) => {
+    if (bundleId && bundleId !== bundleSetup.activeBundleId) return;
+    const previousIds = new Set(explorerFiles.map((file) => file.id));
+    const request = <T,>(url: string) => bundleId
+      ? apiForBundle<T>(bundleId, url)
+      : api<T>(url);
+    const [filesResult, notesResult, directoriesResult] = await Promise.allSettled([
+      request<BundleFile[]>("/api/files"),
+      request<Note[]>("/api/notes"),
+      request<BundleDirectory[]>("/api/directories"),
+    ]);
+    if (filesResult.status === "fulfilled") {
+      const newFiles = filesResult.value.filter((file) => !previousIds.has(file.id));
+      setFiles(filesResult.value);
+      if (newFiles.length) {
+        const importedPaths = expandedPathsForFiles(newFiles);
+        setExpandedDirectories((current) =>
+          new Set([...current, ...importedPaths]),
+        );
+      }
+    }
+    if (notesResult.status === "fulfilled") setNotes(notesResult.value);
+    if (directoriesResult.status === "fulfilled") setDirectories(directoriesResult.value);
+    if (filesResult.status === "rejected" || notesResult.status === "rejected") {
+      setMessage("The import finished, but the file explorer could not be fully refreshed.");
+    }
+  }, [bundleSetup.activeBundleId, explorerFiles, setDirectories, setExpandedDirectories, setFiles, setNotes]);
+  const obsidianImport = useObsidianImport({
+    onImportFinishedForBundle: refreshAfterObsidianImport,
+  });
+  const documents = useWorkspaceDocumentState({
+    expandedDirectories: explorer.expandedDirectories,
+    expandedDirectoriesReady: explorer.expandedDirectoriesReady,
+    bundleId: persistenceBundleId,
+    persistenceEnabled,
+  });
+  const layout = useWorkspaceLayout(initialWorkspaceState?.splitPosition);
+  const models = useWorkspaceModels(setMessage, bundleSetup.ready && bundleSetup.bundles.length > 0);
+  const tabs = useWorkspaceTabs({
+    documents: documents.documents,
+    drafts: documents.drafts,
+    notes: explorer.notes,
+    files: explorer.files,
+    setDocuments: documents.setDocuments,
+    setDrafts: documents.setDrafts,
+    setEditingKey: documents.setEditingKey,
+    draftTitle,
+    initialState: initialWorkspaceState,
+  });
+  const observeAggregateContentRef = useRef<(documentId: string, content: string, rebasedContent?: string) => void>(() => {});
+  const openTranscriptionNoteRef = useRef<(documentId: string) => void>(() => {});
+  const transcriptionDraftFiledRef = useRef<(oldId: string, newId: string, bundleId: string) => void>(() => {});
+  const mutations = useWorkspaceDocumentMutations({
+    bundleId: persistenceBundleId,
+    documents,
+    setGroups: tabs.setGroups,
+    setNotes: explorer.setNotes,
+    setFiles: explorer.setFiles,
+    setMessage,
+    clearDiscovery: explorer.discovery.clearDiscovery,
+    replaceDiscoveryDocument: explorer.discovery.replaceDocument,
+    observeAggregateContent: (documentId, content, rebasedContent) =>
+      observeAggregateContentRef.current(documentId, content, rebasedContent),
+    onDraftFiled: (oldId, newId, bundleId) => transcriptionDraftFiledRef.current(oldId, newId, bundleId),
+  });
+  const transcription = useTranscription({
+    drafts: {
+      createDraft: (content = "") => {
+        setEditorFocusRequest(null);
+        return tabs.createNewTab(undefined, content);
+      },
+      getDraftContent: (id) => documents.draftsRef.current[id] ?? documents.documentsRef.current[id]?.content,
+      getDraftDocument: (id) => documents.documentsRef.current[id],
+      isDraftOpen: (id) => tabs.groups.some((group) => group.tabs.includes(id)),
+      updateDraftContent: (id, content) => {
+        const document = documents.documentsRef.current[id];
+        if (document) documents.changeDraftContent(document, content);
+        else documents.setDrafts((current) => ({ ...current, [id]: content }));
+      },
+      openDraft: (id) => {
+        setEditorFocusRequest(null);
+        if (isUntitledId(id)) tabs.openLocalDraft(id);
+        else openTranscriptionNoteRef.current(id);
+      },
+    },
+    setMessage,
+    sourceBundleId: persistenceBundleId,
+  });
+  transcriptionDraftFiledRef.current = (oldId, newId, bundleId) =>
+    transcription.draftFiled(oldId, newId, bundleId);
+  const autosave = useFiledDocumentAutosave({
+    save: async (documentId, content, baseContent) => {
+      const document = documents.documentsRef.current[documentId];
+      if (!document || isUntitledId(documentId)) return;
+      if (!content.trim()) {
+        setMessage("A note cannot be empty.");
+        throw new Error("A note cannot be empty.");
+      }
+      return await mutations.persistDocument(
+        document,
+        content,
+        document.tags,
+        true,
+        false,
+        baseContent,
+        { includeTags: false },
+      );
+    },
+  });
+  observeAggregateContentRef.current = autosave.observeContent;
+  const flushRefileSave = autosave.flushSave;
+  const isRefileSaveDirty = autosave.isDirty;
+  const flushPendingRefileSaves = mutations.flushPendingNoteSaves;
+  const prepareRefile = useCallback(async (documentId: string) => {
+    try {
+      await flushRefileSave(documentId);
+      await flushPendingRefileSaves(documentId);
+      if (isRefileSaveDirty(documentId)) throw new Error("Could not save the latest note edits before refiling.");
+      return true;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save the latest note edits before refiling.");
+      return false;
+    }
+  }, [flushPendingRefileSaves, flushRefileSave, isRefileSaveDirty, setMessage]);
+  const refile = useNoteRefile({
+    bundleId: persistenceBundleId,
+    prepare: prepareRefile,
+    onComplete: mutations.applyRefiledNote,
+  });
+  const { flushAllSaves, hasDirtySaves } = autosave;
+  const { fileDraft } = mutations;
+  const fileDraftAfterAutosave = useCallback(async (document: ViewerDocument) => {
+    await flushAllSaves();
+    if (hasDirtySaves()) {
+      setMessage("The latest note edits could not be saved. Retry before filing this draft.");
+      return;
+    }
+    fileDraft(document);
+  }, [fileDraft, flushAllSaves, hasDirtySaves, setMessage]);
+  const checkpointContextRef = useRef({
+    bundleId: persistenceBundleId,
+    movingFileId: explorer.movingFileId,
+    deletingNoteId: documents.deletingNoteId,
+  });
+  useLayoutEffect(() => {
+    checkpointContextRef.current = {
+      bundleId: persistenceBundleId,
+      movingFileId: explorer.movingFileId,
+      deletingNoteId: documents.deletingNoteId,
+    };
+  }, [documents.deletingNoteId, explorer.movingFileId, persistenceBundleId]);
+  const { markEdited: checkpointEditedNote, checkpointPending, checkpointScope } = useNoteHistoryCheckpoint({
+    checkpoint: async (documentId, scopeId) => {
+      if (checkpointContextRef.current.bundleId !== scopeId) return false;
+      const bundleId = scopeId;
+      const document = documents.documentsRef.current[documentId];
+      if (!document) return false;
+      if (isUntitledId(documentId)) return false;
+      await autosave.flushSave(documentId);
+      if (autosave.isDirty(documentId)) throw new Error("Could not save the note before its history checkpoint.");
+      const context = checkpointContextRef.current;
+      if (!document || isUntitledId(documentId) || !document.deletable || context.bundleId !== bundleId || context.movingFileId === documentId || context.deletingNoteId === documentId) return false;
+      await apiForBundle(bundleId, "/api/note/history/checkpoint", {
+        method: "POST",
+        body: JSON.stringify({ id: documentId }),
+      });
+      return true;
+    },
+    onCheckpoint: (documentId, scopeId) => {
+      const activeGroup = tabs.groups.find((group) => group.id === tabs.activeGroupId);
+      if (!layout.rightPaneOpen || activeGroup?.activeId !== documentId || persistenceBundleId !== scopeId) return;
+      setHistoryCheckpoint((current) => ({
+        documentId,
+        scopeId,
+        revision: (current?.documentId === documentId && current.scopeId === scopeId ? current.revision : 0) + 1,
+      }));
+    },
+    onError: (_documentId, error) => {
+      setMessage(error instanceof Error ? error.message : "Could not save a note history checkpoint.");
+    },
+  });
+
+  const previousActiveDocumentRef = useRef<{ documentId: string | null; scopeId: string }>({
+    documentId: null,
+    scopeId: persistenceBundleId,
+  });
+  useEffect(() => {
+    const activeGroup = tabs.groups.find((group) => group.id === tabs.activeGroupId);
+    const documentId = activeGroup?.activeId ?? null;
+    const previous = previousActiveDocumentRef.current;
+    if (previous.documentId && previous.documentId !== documentId && previous.scopeId === persistenceBundleId && !isUntitledId(previous.documentId)) {
+      void checkpointPending(previous.documentId, previous.scopeId);
+    }
+    previousActiveDocumentRef.current = { documentId, scopeId: persistenceBundleId };
+  }, [checkpointPending, persistenceBundleId, tabs.activeGroupId, tabs.groups]);
+
+  function markEmbeddingDirty(documentId: string) {
+    embeddingRevisionsRef.current.set(
+      documentId,
+      (embeddingRevisionsRef.current.get(documentId) ?? 0) + 1,
+    );
+  }
+
+  function finalizeFiledDocument(documentId: string): Promise<void> {
+    const existing = embeddingFinalizationsRef.current.get(documentId);
+    if (existing) {
+      return existing.then(() => {
+        if (embeddingRevisionsRef.current.has(documentId))
+          return finalizeFiledDocument(documentId);
+      });
+    }
+    const finalization = (async () => {
+      while (true) {
+        const revision = embeddingRevisionsRef.current.get(documentId);
+        if (revision === undefined) return;
+        await autosave.flushSave(documentId);
+        if (autosave.isDirty(documentId)) return;
+        const refreshed = await mutations.refreshDocumentEmbedding(documentId);
+        if (!refreshed) return;
+        if (embeddingRevisionsRef.current.get(documentId) === revision) {
+          embeddingRevisionsRef.current.delete(documentId);
+          return;
+        }
+      }
+    })().finally(() => {
+      if (embeddingFinalizationsRef.current.get(documentId) === finalization)
+        embeddingFinalizationsRef.current.delete(documentId);
+    });
+    embeddingFinalizationsRef.current.set(documentId, finalization);
+    return finalization;
+  }
+
+  async function prepareHistoryDocument(documentId: string) {
+    await prepareFiledDocumentHistory(
+      documentId,
+      autosave.flushSave,
+      finalizeFiledDocument,
+      autosave.isDirty,
+    );
+  }
+
+  function finalizeAllFiledDocuments() {
+    return Promise.all(
+      Array.from(embeddingRevisionsRef.current.keys(), finalizeFiledDocument),
+    );
+  }
+  const refreshAfterHistoryRestore = useCallback(async (documentId: string) => {
+    const [detail, notes, files] = await Promise.all([
+      api<NoteDetail>(`/api/note?id=${encodeURIComponent(documentId)}`),
+      api<Note[]>("/api/notes"),
+      api<BundleFile[]>("/api/files"),
+    ]);
+    documents.setDocuments((current) => ({
+      ...current,
+      [documentId]: { ...detail, deletable: true } as ViewerDocument,
+    }));
+    documents.setDrafts((current) => {
+      const next = { ...current };
+      delete next[documentId];
+      return next;
+    });
+    setNotes(notes);
+    setFiles(files);
+  }, [documents, setFiles, setNotes]);
+  const historyRestoreActionsRef = useRef<{
+    before: (documentId: string) => Promise<void>;
+    after: (documentId: string) => Promise<void>;
+  }>({ before: async () => {}, after: async () => {} });
+  historyRestoreActionsRef.current = {
+    before: prepareHistoryDocument,
+    after: refreshAfterHistoryRestore,
+  };
+  const beforeHistoryRestore = useCallback(
+    (documentId: string) => historyRestoreActionsRef.current.before(documentId),
+    [],
+  );
+  const historyRestored = useCallback(
+    (documentId: string) => historyRestoreActionsRef.current.after(documentId),
+    [],
+  );
+  const navigation = useWorkspaceDocumentNavigation({
+    documents,
+    groups: tabs.groups,
+    setGroups: tabs.setGroups,
+    activeGroupId: tabs.activeGroupId,
+    setActiveGroupId: tabs.setActiveGroupId,
+    closeTab: tabs.closeTab,
+    setNotes: explorer.setNotes,
+    setFiles: explorer.setFiles,
+    setMessage,
+    removeDiscoveryDocument: explorer.discovery.removeDocument,
+  });
+  openTranscriptionNoteRef.current = (documentId) => {
+    void navigation.openDocument(documentId, 'note');
+  };
+
+  const session = useWorkspaceSessionPersistence({
+    initialState: initialWorkspaceState,
+    bundleId: persistenceBundleId,
+    documents: documents.documents,
+    notes: explorer.notes,
+    files: explorer.files,
+    groups: tabs.groups,
+    activeGroupId: tabs.activeGroupId,
+    sidebarMode: explorer.sidebarMode,
+    explorerScrollTop: explorer.explorerScrollTop,
+    splitPosition: layout.splitPosition,
+    setGroups: tabs.setGroups,
+    setActiveGroupId: tabs.setActiveGroupId,
+    loadDocument: navigation.loadDocument,
+    onLoadError: (_documentId, error) => {
+      setMessage(error instanceof Error ? error.message : "Could not restore document");
+    },
+    enabled: persistenceEnabled,
+  });
+  const flushSession = session.flush;
+  const flushUpdateRestartState = useCallback(async () => {
+    await flushAllSaves();
+    flushSession();
+    return !hasDirtySaves();
+  }, [flushAllSaves, flushSession, hasDirtySaves]);
+  useEffect(
+    () => window.folio?.onPrepareUpdateRestart?.(flushUpdateRestartState),
+    [flushUpdateRestartState],
+  );
+
+  const bundleSwitchRevisionRef = useRef(0);
+  const initialBundleIdRef = useRef<string | null | undefined>(undefined);
+  const previousBundleIdRef = useRef<string | null>(null);
+  const switchBundle = useCallback(async (bundleId: string, previousBundleId: string | null) => {
+    const revision = ++bundleSwitchRevisionRef.current;
+    documents.deletingDirectories.current = new Set();
+    for (const id of Object.keys(documents.documentRequests.current)) documents.documentRequests.current[id] += 1;
+    setHistoryCheckpoint(null);
+    explorer.setFilesLoading(true);
+    explorer.discovery.clearDiscovery();
+    if (previousBundleId) {
+      const currentSession = session.flush();
+      if (currentSession) writeStorageItem(`folio:workspace-state:v2:${previousBundleId}`, JSON.stringify({
+        ...currentSession,
+        expandedDirectories: [...explorer.expandedDirectories],
+      }));
+    }
+    try {
+      const [notes, files, directories, drafts] = await Promise.all([
+        apiForBundle<Note[]>(bundleId, "/api/notes"),
+        apiForBundle<BundleFile[]>(bundleId, "/api/files"),
+        apiForBundle<BundleDirectory[]>(bundleId, "/api/directories"),
+        apiForBundle<import("../../../domain/types.ts").StoredDraft[]>(bundleId, "/api/drafts"),
+        models.refreshMlxStatus(),
+      ]);
+      if (revision !== bundleSwitchRevisionRef.current) return;
+      explorer.setNotes(notes);
+      explorer.setFiles(files);
+      explorer.setDirectories(directories);
+      explorer.setExpandedDirectories(expandedPathsForFiles(files));
+      {
+      const nextDocuments = Object.fromEntries(drafts.map((draft) => [draft.id, {
+        id: draft.id, title: draftTitle(draft.content), type: "Local draft", description: "", tags: [], createdAt: draft.createdAt,
+        content: draft.content, deletable: true, movable: false, status: "draft" as const, staleAfter: null, stale: false,
+        filedBy: null, filedAt: null, links: [], backlinks: [], suggestions: [], updatedAt: draft.updatedAt,
+      }]));
+      documents.setDocuments(nextDocuments);
+      documents.setDrafts(Object.fromEntries(drafts.map((draft) => [draft.id, draft.content])));
+      }
+      const stored = readStorageItem(`folio:workspace-state:v2:${bundleId}`);
+      const parsedStored = stored ? JSON.parse(stored) as { state?: unknown; expandedDirectories?: string[]; splitPosition?: number } : null;
+      const restored = parseWorkspaceSessionState(parsedStored?.state || parsedStored);
+      const reconciled = restored
+        ? reconcileWorkspaceSessionState(restored, new Set([
+          ...notes.map((note) => note.id),
+          ...files.map((file) => file.id),
+          ...drafts.map((draft) => draft.id),
+        ]))
+        : { groups: [{ id: "primary", tabs: [], activeId: null, previewId: null }], activeGroupId: "primary" };
+      tabs.setGroups(reconciled.groups);
+      tabs.setActiveGroupId(reconciled.activeGroupId);
+      explorer.setSidebarMode(restored?.sidebarMode || "explore");
+      explorer.setExpandedDirectories(parsedStored?.expandedDirectories ? new Set(parsedStored.expandedDirectories) : expandedPathsForFiles(files));
+      setExplorerScrollTop(restored?.explorerScrollTop || 0);
+      session.restoreDocumentScrollTops(restored?.documentScrollTops || {});
+      session.restoreDocumentSelections(restored?.documentSelections || {});
+      layout.setSplitPosition(
+        restored?.splitPosition
+        ?? (typeof parsedStored?.splitPosition === "number" ? parsedStored.splitPosition : 50),
+      );
+      setPersistenceBundleId(bundleId);
+      explorer.setFilesLoading(false);
+      const restoredGroups = reconciled.groups;
+      session.skipInitialRestore();
+      const noteIds = new Set(notes.map((note) => note.id));
+      for (const group of restoredGroups) {
+        if (group.activeId) void navigation.loadDocument(group.activeId, noteIds.has(group.activeId) ? "note" : "file");
+      }
+    } catch (error) {
+      if (revision === bundleSwitchRevisionRef.current) {
+        bundleSetup.restoreBundle(previousBundleId);
+        setActiveBundleId(previousBundleId);
+        explorer.setFilesLoading(false);
+        setMessage(error instanceof Error ? error.message : "Could not switch bundles.");
+      }
+    }
+  }, [bundleSetup, documents, explorer, layout, models, navigation, session, setExplorerScrollTop, setPersistenceBundleId, tabs]);
+
+  useEffect(() => {
+    const id = bundleSetup.activeBundleId;
+    if (!id) return;
+    if (initialBundleIdRef.current === id) return;
+    const previousBundleId = initialBundleIdRef.current || previousBundleIdRef.current;
+    initialBundleIdRef.current = id;
+    previousBundleIdRef.current = id;
+    void switchBundle(id, previousBundleId);
+  }, [bundleSetup.activeBundleId, switchBundle]);
+
+  function selectBundle(bundleId: string) {
+    void Promise.all([finalizeAllFiledDocuments(), documents.flushDrafts()])
+      .then(async () => {
+        if (!await checkpointScope(persistenceBundleId)) throw new Error("Could not save note history before switching bundles.");
+        await bundleSetup.selectBundle(bundleId);
+      })
+      .catch((error) => {
+        setMessage(error instanceof Error ? error.message : "Could not save the current bundle before switching.");
+      });
+  }
+  const clearEmptyWorkspace = useCallback(() => {
+    documents.setDocuments({});
+    documents.setDrafts({});
+    tabs.setGroups([{ id: "primary", tabs: [], activeId: null, previewId: null }]);
+    tabs.setActiveGroupId("primary");
+    setPersistenceBundleId("legacy-bundle");
+    explorer.setExpandedDirectories(new Set());
+    explorer.setExpandedDirectoriesReady(true);
+    explorer.setNotes([]);
+    explorer.setFiles([]);
+    explorer.setFilesLoading(false);
+  }, [documents, explorer, tabs]);
+  async function setupBundle(input: Parameters<typeof bundleSetup.setupBundle>[0]) {
+    await Promise.all([finalizeAllFiledDocuments(), documents.flushDrafts()]);
+    if (!await checkpointScope(persistenceBundleId)) throw new Error("Could not save note history before creating a bundle.");
+    return bundleSetup.setupBundle(input);
+  }
+  async function detachBundle(bundleId: string) {
+    await Promise.all([finalizeAllFiledDocuments(), documents.flushDrafts()]);
+    if (!await checkpointScope(persistenceBundleId)) throw new Error("Could not save note history before removing a bundle.");
+    await bundleSetup.detachBundle(bundleId);
+    if (bundleSetup.activeBundleId === bundleId && bundleSetup.bundles.length === 1)
+      clearEmptyWorkspace();
+  }
+  const settingsBundleSetup = {
+    ...bundleSetup,
+    selectBundle,
+    setupBundle,
+    detachBundle,
+  };
+
+  const ensureDocumentLoaded = useCallback((documentId: string) => {
+    if (documents.documents[documentId] || documents.loadingDocuments.has(documentId)) return;
+    const source = explorer.notes.some((note) => note.id === documentId) ? "note" : "file";
+    void navigation.loadDocument(documentId, source).catch((error) => {
+      setMessage(error instanceof Error ? error.message : "Could not open file");
+    });
+  }, [documents.documents, documents.loadingDocuments, explorer.notes, navigation]);
+
+  function closeDocumentTab(groupId: string, documentId: string) {
+    setEditorFocusRequest((current) =>
+      current?.groupId === groupId && current.documentId === documentId
+        ? null
+        : current,
+    );
+    const content = documents.drafts[documentId] ?? documents.documents[documentId]?.content ?? "";
+    if (isUntitledId(documentId) && !content.trim()) {
+      void navigation.deleteLocalDraft(documentId);
+      return;
+    }
+    if (!isUntitledId(documentId)) void finalizeFiledDocument(documentId);
+    tabs.closeTab(groupId, documentId);
+  }
+
+  useWorkspaceBootstrap({
+    setMlxStatus: models.setMlxStatus,
+    refreshMlxStatus: models.refreshMlxStatus,
+    setFilesLoading: explorer.setFilesLoading,
+    setMessage,
+    setNotes: explorer.setNotes,
+    setFiles: explorer.setFiles,
+    setDirectories: explorer.setDirectories,
+    setVersionInfo: models.setVersionInfo,
+    mergeRemoteDrafts: documents.mergeRemoteDrafts,
+    expandedDirectoriesReadyRef: explorer.expandedDirectoriesReadyRef,
+    setExpandedDirectories: explorer.setExpandedDirectories,
+    setExpandedDirectoriesReady: explorer.setExpandedDirectoriesReady,
+    onWorkspaceDataReady: session.markWorkspaceDataReady,
+    onNoBundle: clearEmptyWorkspace,
+    enabled: bundleSetup.ready,
+  });
+
+  useEffect(() => {
+    if (!message) return;
+    const timeout = window.setTimeout(() => setMessage(""), 3_000);
+    return () => window.clearTimeout(timeout);
+  }, [message]);
+
+  useWorkspaceShortcutActions({
+    sidebarMode: explorer.sidebarMode,
+    setSidebarMode: explorer.setSidebarMode,
+    searchInputRef: explorer.searchInputRef,
+    groups: tabs.groups,
+    activeGroupId: tabs.activeGroupId,
+    documents: documents.documents,
+    createNewTab: () => {
+      setEditorFocusRequest(null);
+      tabs.createNewTab();
+    },
+    activateTab: (groupId, documentId) => {
+      setActiveFileRevealRequest((request) => request + 1);
+      const group = tabs.groups.find((candidate) => candidate.id === groupId);
+      if (groupId !== tabs.activeGroupId || group?.activeId !== documentId)
+        void finalizeAllFiledDocuments();
+      tabs.activateTab(groupId, documentId);
+      ensureDocumentLoaded(documentId);
+      setEditorFocusRequest({
+        id: ++editorFocusRequestIdRef.current,
+        groupId,
+        documentId,
+      });
+    },
+    closeTab: closeDocumentTab,
+    fileDraft: fileDraftAfterAutosave,
+    flushDocument: finalizeFiledDocument,
+    exportDocument: (document, format) =>
+      void noteExport.exportDocument(
+        document,
+        documents.drafts[document.id],
+        format,
+      ),
+    openSettings,
+  });
+
+  const { sidebar, moveBundleFile, reindexBundle } = useWorkspaceSidebarProps({
+    explorer,
+    documents,
+    groups: tabs.groups,
+    activeGroupId: tabs.activeGroupId,
+    activeFileRevealRequest,
+    setGroups: tabs.setGroups,
+    models,
+    setMessage,
+    draftTitle,
+    createNewTab: (initialContent) => {
+      setEditorFocusRequest(null);
+      tabs.createNewTab(undefined, initialContent);
+    },
+    openLocalDraft: (id) => {
+      setEditorFocusRequest(null);
+      tabs.openLocalDraft(id);
+    },
+    deleteLocalDraft: navigation.deleteLocalDraft,
+    deleteFiledNote: (file) => navigation.deleteFiledNote(file, true),
+    isDocumentDirty: autosave.isDirty,
+    exportFile: async (file, format) => {
+      const document = await api<ViewerDocument>(`/api/file?path=${encodeURIComponent(file.id)}`);
+      await noteExport.exportDocument(document, documents.drafts[file.id], format);
+    },
+    openDocument: async (...args) => {
+      setActiveFileRevealRequest((request) => request + 1);
+      setEditorFocusRequest(null);
+      void finalizeAllFiledDocuments();
+      return navigation.openDocument(...args);
+    },
+    bundleSetup: settingsBundleSetup,
+    openSettings: () => openSettings(),
+  });
+  const settingsBundleSetupWithReindex = {
+    ...settingsBundleSetup,
+    reindexing: explorer.reindexing,
+    reindexBundle,
+  };
+
+  return {
+    exportPreview: noteExport.preview,
+    transcription: { model: transcription.model, actions: transcription.actions },
+    historyCheckpoint,
+    historyScopeId: persistenceBundleId,
+    app: {
+      versionInfo: models.versionInfo,
+      mlxStatus: models.mlxStatus,
+      mlxActionModel: models.mlxActionModel,
+      mlxAction: models.mlxAction,
+      modelError: models.modelError,
+      onInstallMlxModel: models.installMlxModel,
+      onToggleMlxModel: models.toggleMlxModel,
+      onOpenSettings: (category) => openSettings(category),
+    },
+    settings: {
+      open: themeSettings.settingsOpen,
+      initialCategory: settingsCategory,
+      themeId: themeSettings.themeId,
+      onSelectTheme: themeSettings.selectTheme,
+      noteFontSize: themeSettings.noteFontSize,
+      onSelectNoteFontSize: themeSettings.selectNoteFontSize,
+      obsidianImport,
+      bundleSetup: settingsBundleSetupWithReindex,
+      modelSettings: {
+        status: models.mlxStatus,
+        actionModel: models.mlxActionModel,
+        action: models.mlxAction,
+        error: models.modelError,
+        install: models.installMlxModel,
+        remove: models.removeMlxModel,
+        select: models.selectGenerationModel,
+        selectTranscription: models.selectTranscriptionModel,
+        selectCaption: models.selectCaptionModel,
+      },
+      onClose: themeSettings.closeSettings,
+    },
+    sidebar,
+    layout: {
+      sidebarWidth: layout.sidebarWidth,
+      rightPaneWidth: layout.rightPaneWidth,
+      sidebarOpen: layout.sidebarOpen,
+      rightPaneOpen: layout.rightPaneOpen,
+      setSidebarOpen: layout.setSidebarOpen,
+      setRightPaneOpen: layout.setRightPaneOpen,
+      beginHorizontalResize: layout.beginHorizontalResize,
+      finishHorizontalResize: layout.finishHorizontalResize,
+      resizeSidebar: layout.resizeSidebar,
+      resizeRightPane: layout.resizeRightPane,
+      resetSidebar: () => layout.setSidebarWidth(null),
+      resetRightPane: () => layout.setRightPaneWidth(null),
+    },
+    editor: {
+      model: {
+        groups: tabs.groups,
+        splitPosition: layout.splitPosition,
+        activeGroupId: tabs.activeGroupId,
+        documents: documents.documents,
+        loadingDocuments: documents.loadingDocuments,
+        savingDocuments: documents.savingDocuments,
+        editingKey: documents.editingKey,
+        drafts: documents.drafts,
+        deletingNoteId: documents.deletingNoteId,
+        movingFileId: explorer.movingFileId,
+        filingDirectories: bundleDirectories(explorer.files),
+        filingQueues: documents.filingQueues,
+        refileEntries: refile.entries,
+        editorFocusRequest,
+        message,
+        exportingNoteId: noteExport.exportingNoteId,
+      },
+      actions: {
+        beginHorizontalResize: layout.beginHorizontalResize,
+        resizeSplit: layout.resizeSplit,
+        finishHorizontalResize: layout.finishHorizontalResize,
+        resetSplit: () => layout.setSplitPosition(50),
+        activateGroup: (groupId) => {
+          if (groupId !== tabs.activeGroupId) {
+            setActiveFileRevealRequest((request) => request + 1);
+            setEditorFocusRequest(null);
+            void finalizeAllFiledDocuments();
+          }
+          tabs.setActiveGroupId(groupId);
+        },
+        moveTabToGroup: (documentId, sourceGroupId, targetGroupId, targetIndex) => {
+          setEditorFocusRequest(null);
+          tabs.moveTabToGroup(documentId, sourceGroupId, targetGroupId, targetIndex);
+        },
+        titleForId: tabs.titleForId,
+        activateTab: (groupId, documentId) => {
+          setActiveFileRevealRequest((request) => request + 1);
+          const group = tabs.groups.find((candidate) => candidate.id === groupId);
+          if (groupId !== tabs.activeGroupId || group?.activeId !== documentId)
+            void finalizeAllFiledDocuments();
+          tabs.activateTab(groupId, documentId);
+          ensureDocumentLoaded(documentId);
+          setEditorFocusRequest({
+            id: ++editorFocusRequestIdRef.current,
+            groupId,
+            documentId,
+          });
+        },
+        pinTab: tabs.pinTab,
+        consumeEditorFocusRequest: (requestId) =>
+          setEditorFocusRequest((current) =>
+            current?.id === requestId ? null : current,
+          ),
+        createNewTab: (targetGroupId) => {
+          setEditorFocusRequest(null);
+          tabs.createNewTab(targetGroupId);
+        },
+        splitWorkspace: () => {
+          setEditorFocusRequest(null);
+          tabs.splitWorkspace();
+        },
+        closeGroup: (groupId) => {
+          setEditorFocusRequest(null);
+          void finalizeAllFiledDocuments();
+          tabs.closeGroup(groupId);
+        },
+        closeTab: closeDocumentTab,
+        changeDraftContent: (document, content) => {
+          if ([...documents.deletingDirectories.current].some((directory) => document.id.startsWith(`${directory}/`))) return;
+          documents.changeDraftContent(document, content);
+          if (!isUntitledId(document.id)) {
+            checkpointEditedNote(document.id, persistenceBundleId);
+            markEmbeddingDirty(document.id);
+            autosave.scheduleSave(document.id, content, document.content);
+          }
+        },
+        fileDraft: fileDraftAfterAutosave,
+        changeFilingFields: mutations.changeFilingFields,
+        revealStandaloneFiling: mutations.revealStandaloneFiling,
+        confirmFiling: mutations.confirmFiling,
+        dismissFiling: mutations.dismissFiling,
+        startRefile: (documentId) => { void refile.start(documentId); },
+        changeRefileFields: refile.change,
+        acceptRefile: (documentId) => { void refile.accept(documentId); },
+        dismissRefile: refile.dismiss,
+        beginEditing: (groupId, document) => {
+          tabs.pinTab(groupId, document.id);
+          mutations.beginEditing(groupId, document);
+        },
+        finishEditing: (groupId, document, scrollTop) => {
+          mutations.finishEditing(groupId, document, scrollTop);
+          if (!isUntitledId(document.id))
+            void finalizeFiledDocument(document.id);
+        },
+        openDocument: async (...args) => {
+          setActiveFileRevealRequest((request) => request + 1);
+          setEditorFocusRequest(null);
+          void finalizeAllFiledDocuments();
+          return navigation.openDocument(...args);
+        },
+        toggleTaskCheckbox: (document, lineNumber, checked) => {
+          const updated = mutations.toggleTaskCheckbox(document, lineNumber, checked);
+          if (!isUntitledId(document.id)) checkpointEditedNote(document.id, persistenceBundleId);
+          return updated;
+        },
+        deleteFiledNote: async (document) => {
+          await autosave.flushSave(document.id);
+          return navigation.deleteFiledNote(document);
+        },
+        persistDocument: (...args) => {
+          const updated = mutations.persistDocument(...args);
+          if (!isUntitledId(args[0].id)) checkpointEditedNote(args[0].id, persistenceBundleId);
+          return updated;
+        },
+        persistMetadata: (...args) => {
+          const updated = mutations.persistMetadata(...args);
+          if (!isUntitledId(args[0].id)) checkpointEditedNote(args[0].id, persistenceBundleId);
+          return updated;
+        },
+        moveBundleFile: async (id, directory) => {
+          await finalizeFiledDocument(id);
+          return moveBundleFile(id, directory);
+        },
+        getDocumentScrollTop: (documentId) =>
+          session.getDocumentScrollTop(documentId),
+        rememberDocumentScrollTop: session.rememberDocumentScrollTop,
+        getDocumentSelection: session.getDocumentSelection,
+        rememberDocumentSelection: session.rememberDocumentSelection,
+        exportDocument: (document, format) =>
+          void noteExport.exportDocument(
+            document,
+            documents.drafts[document.id],
+            format,
+          ),
+        deliverTranslatedExport: (document, result, target, destination) =>
+          deliverTranslatedExport(
+            {
+              exportSnapshot: noteExport.exportSnapshot,
+              createDraft: (content) => {
+                setEditorFocusRequest(null);
+                tabs.createNewTab(undefined, content);
+              },
+              setMessage,
+            },
+            document,
+            result,
+            target,
+            destination,
+          ),
+        beforeHistoryRestore,
+        historyRestored,
+        notifyMessage: setMessage,
+        dismissMessage: () => setMessage(""),
+      },
+    },
+  };
+}

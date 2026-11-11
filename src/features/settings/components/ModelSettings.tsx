@@ -1,0 +1,113 @@
+import { MLX_CAPTION_MODEL_IDS, type MlxCaptionModelId, type MlxModelId, type MlxStatus, type MlxTranscriptionModelId } from "../../../domain/types.ts";
+
+import { ModelDownloadProgress } from "../../workspace/components/ModelDownloadProgress.tsx";
+import { modelCatalog } from "../../workspace/model/model-catalog.ts";
+
+export type ModelSettingsControls = {
+  status: MlxStatus | null;
+  actionModel: MlxModelId | null;
+  action: string | null;
+  error: string;
+  install: (id: MlxModelId) => void;
+  remove: (id: MlxModelId) => void;
+  select: (id: MlxModelId) => void;
+  selectTranscription: (id: MlxTranscriptionModelId) => void;
+  selectCaption: (id: MlxCaptionModelId | null) => void;
+};
+
+export function ModelSettings({ controls }: { controls: ModelSettingsControls }) {
+  const models = controls.status?.models ?? [];
+  const canManage = Boolean(controls.status?.available && controls.status.helperAvailable);
+  const selectedTranscriptionModel = controls.status?.selectedTranscriptionModel ?? "whisper";
+  const selectedTranscriptionInstalled = Boolean(models.find((model) => model.id === selectedTranscriptionModel)?.installed);
+  const selectedCaptionModel = controls.status?.selectedCaptionModel ?? null;
+  const renderCaptionOption = (id: MlxCaptionModelId) => {
+    const definition = modelCatalog.find((item) => item.id === id)!;
+    const model = models.find((item) => item.id === id);
+    const selected = selectedCaptionModel === id;
+    const installing = Boolean(controls.status?.installing.includes(id) || controls.status?.downloads.some((item) => item.id === id));
+    const busy = Boolean(model?.busy || model?.loading || installing || controls.actionModel !== null);
+    return (
+      <article className="model-settings-row" key={id}>
+        <label>
+          <input type="radio" name="folio-caption-model" value={id} checked={selected} onChange={() => controls.selectCaption(id)} disabled={!canManage || controls.action !== null} />
+          <span><strong>Use {definition.name}</strong><small>{model?.installed ? "Downloaded" : `Not downloaded · ${definition.description.replace(/^4-bit · /, "")}`}</small></span>
+        </label>
+        {selected && !model?.installed ? (
+          <div className="model-settings-actions">
+            <button type="button" onClick={() => controls.install(id)} disabled={!canManage || busy}>{installing ? "Downloading…" : "Download"}</button>
+          </div>
+        ) : null}
+      </article>
+    );
+  };
+  const renderModel = (definition: typeof modelCatalog[number]) => {
+    const model = models.find((item) => item.id === definition.id);
+    const download = controls.status?.downloads.find((item) => item.id === definition.id)?.progress;
+    const acting = controls.actionModel === definition.id;
+    const downloading = Boolean(controls.status?.installing.includes(definition.id));
+    const installing = Boolean(download) || (!model?.installed && (downloading || (acting && controls.action === "install") || Boolean(model?.loading)));
+    const installLabel = download?.phase === "downloading" ? "Downloading…"
+      : download?.phase === "loading" || model?.loading ? "Loading…" : "Downloading…";
+    const busy = Boolean(model?.busy || model?.loading || downloading || controls.actionModel !== null);
+    const identity = <span><strong>{definition.name}</strong><small>{definition.description}</small></span>;
+    return (
+      <article className={`model-settings-row${definition.generation ? "" : " model-settings-auxiliary"}`} key={definition.id}>
+        {definition.generation ? <label>
+          <input type="radio" name="folio-generation-model" checked={controls.status?.selectedGenerationModel === definition.id} onChange={() => controls.select(definition.id)} disabled={!canManage || controls.actionModel !== null} />
+          {identity}
+        </label> : definition.transcription ? <label>
+          <input type="radio" name="folio-transcription-model" value={definition.id} checked={selectedTranscriptionModel === definition.id} onChange={() => controls.selectTranscription(definition.id as MlxTranscriptionModelId)} disabled={!canManage || controls.actionModel !== null} />
+          {identity}
+        </label> : identity}
+        <div className="model-settings-actions">
+          {model?.installed ? <span className="model-installed">{model.busy ? "In use" : model.loading ? "Loading…" : model.loaded ? "Ready" : "Installed"}</span> : null}
+          {model?.installed ? (
+            <button type="button" onClick={() => controls.remove(definition.id)} disabled={!canManage || busy} title={model.busy ? "Wait until this model finishes its requests to remove it." : undefined}>
+              {acting && controls.action === "remove" ? "Removing…" : "Remove"}
+            </button>
+          ) : (
+            <button type="button" onClick={() => controls.install(definition.id)} disabled={!canManage || busy}>
+              {installing ? installLabel : "Download"}
+            </button>
+          )}
+        </div>
+        {installing ? <ModelDownloadProgress modelName={definition.name} progress={download} /> : null}
+      </article>
+    );
+  };
+  return (
+    <section className="settings-section" aria-labelledby="settings-models-heading">
+      <div className="settings-section-copy">
+        <h2 id="settings-models-heading">Local models</h2>
+        <p>Choose models for text generation and transcription. Manage semantic search below. Model files stay in FolioNotes’s local cache.</p>
+      </div>
+      {!controls.status?.available ? <p className="settings-import-message">Local MLX models need Apple Silicon and macOS 14 or newer.</p> : null}
+      {controls.status?.available && !controls.status.helperAvailable ? <p className="settings-import-message">The local MLX helper is not ready. Rebuild or reinstall FolioNotes, then retry the download.</p> : null}
+      <fieldset className="model-settings-group" aria-label="Text generation">
+        <legend>Text generation</legend>
+        {modelCatalog.filter((definition) => definition.generation).map(renderModel)}
+      </fieldset>
+      <fieldset className="model-settings-group" aria-label="Transcription">
+        <legend>Transcription</legend>
+        <p>Choose a local speech recognition model. If your choice is missing, install it below before transcribing.</p>
+        {modelCatalog.filter((definition) => definition.transcription).map(renderModel)}
+        {controls.status && canManage && !selectedTranscriptionInstalled ? <p role="status">The selected transcription model is not installed. Transcription will wait until it is downloaded.</p> : null}
+      </fieldset>
+      <fieldset className="model-settings-group" aria-label="Image descriptions">
+        <legend>Image descriptions</legend>
+        <p>Choose a model to describe images with the magnifier button in the image toolbar. It reuses the Filing &amp; Ask model weights, so there is no extra download if that model is already installed.</p>
+        {MLX_CAPTION_MODEL_IDS.map(renderCaptionOption)}
+        <article className="model-settings-row">
+          <label>
+            <input type="radio" name="folio-caption-model" value="none" checked={selectedCaptionModel === null} onChange={() => controls.selectCaption(null)} disabled={!canManage || controls.action !== null} />
+            <span><strong>None</strong><small>Image descriptions are off</small></span>
+          </label>
+        </article>
+        {controls.status && canManage && selectedCaptionModel && !models.find((model) => model.id === selectedCaptionModel)?.installed ? <p role="status">The selected image description model is not downloaded. Download it above to describe images.</p> : null}
+      </fieldset>
+      {modelCatalog.filter((definition) => !definition.generation && !definition.transcription).map(renderModel)}
+      {controls.error ? <p className="settings-model-error" role="alert">{controls.error}</p> : null}
+    </section>
+  );
+}

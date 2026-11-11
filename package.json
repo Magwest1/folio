@@ -1,0 +1,132 @@
+{
+  "name": "okf-notetaker",
+  "productName": "FolioNotes",
+  "private": true,
+  "version": "0.11.0",
+  "license": "MIT",
+  "type": "module",
+  "main": "electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MagnusOlstad/folio.git"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n web,api -c blue,green \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "vite",
+    "dev:api": "node --watch server/index.js",
+    "build": "tsc -b && vite build",
+    "test": "node --test test/*.test.js",
+    "test:ui": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:local": "playwright test --config=playwright.local.config.ts",
+    "benchmark:history": "node scripts/benchmark-history.js",
+    "desktop": "npm run build:mlx && npm run build && electron .",
+    "build:mlx": "bash experiments/mlx-swift/Scripts/build-native.sh",
+    "dist:mac": "npm run build:mlx && npm run build && electron-builder --mac --arm64 --publish never",
+    "dist:mac:staged": "npm run build:mlx && npm run build && electron-builder --mac dir --arm64 --publish never --config.mac.notarize=false",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.11.0",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.4",
+    "@codemirror/view": "^6.43.11",
+    "archiver": "^8.0.0",
+    "concurrently": "^10.0.6",
+    "dotenv": "^17.4.2",
+    "electron-updater": "^6.8.11",
+    "express": "^5.2.1",
+    "isomorphic-git": "^1.42.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "jsdom": "^30.0.1",
+    "oxlint": "^1.79.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
+  },
+  "build": {
+    "appId": "no.okf.folio",
+    "productName": "FolioNotes",
+    "afterPack": "./scripts/macos-update-config.mjs",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "server/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "seed-data",
+        "to": "seed-data"
+      },
+      {
+        "from": "experiments/mlx-swift/.cache/staged/Folio.app/Contents",
+        "to": "mlx"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "minimumSystemVersion": "14.0",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "FolioNotes uses your microphone to record audio for local transcription.",
+        "NSAudioCaptureUsageDescription": "FolioNotes records system audio, such as the other people in an online meeting, for local transcription."
+      },
+      "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "notarize": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "forceCodeSigning": true,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.dmg"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "MagnusOlstad",
+      "repo": "folio"
+    }
+  },
+  "overrides": {
+    "minimatch": "^11.0.5",
+    "brace-expansion": "^5.0.12"
+  }
+}

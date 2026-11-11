@@ -1,0 +1,79 @@
+import { useState } from "react";
+import type { PointerEvent } from "react";
+
+export function useWorkspaceLayout(initialSplitPosition?: number) {
+  const [sidebarWidth, setSidebarWidth] = useState<number | null>(null);
+  const [rightPaneWidth, setRightPaneWidth] = useState<number | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [rightPaneOpen, setRightPaneOpen] = useState(
+    () => typeof window === "undefined" || window.innerWidth > 700,
+  );
+  const [splitPosition, setSplitPosition] = useState(
+    initialSplitPosition ?? 50,
+  );
+
+  function beginHorizontalResize(event: PointerEvent<HTMLElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    document.body.classList.add("resizing-horizontal");
+  }
+
+  function finishHorizontalResize(event: PointerEvent<HTMLElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    document.body.classList.remove("resizing-horizontal");
+  }
+
+  function resizeSidebar(clientX: number, handle: HTMLElement) {
+    const workspace = handle.parentElement;
+    if (!workspace) return;
+    const bounds = workspace.getBoundingClientRect();
+    const rightPaneSpace = rightPaneOpen ? (rightPaneWidth ?? 310) + 7 : 0;
+    const maxWidth = Math.max(220, Math.min(520, bounds.width - 420 - rightPaneSpace - 7));
+    setSidebarWidth(
+      Math.round(Math.min(maxWidth, Math.max(220, clientX - bounds.left))),
+    );
+  }
+
+  function resizeRightPane(clientX: number, handle: HTMLElement) {
+    const workspace = handle.parentElement;
+    if (!workspace) return;
+    const bounds = workspace.getBoundingClientRect();
+    const sidebarSpace = sidebarOpen ? (sidebarWidth ?? 310) + 7 : 0;
+    const maxWidth = Math.max(220, Math.min(520, bounds.width - 420 - sidebarSpace - 7));
+    setRightPaneWidth(Math.round(Math.min(maxWidth, Math.max(220, bounds.right - clientX))));
+  }
+
+  function resizeSplit(clientX: number, handle: HTMLElement) {
+    const workspace = handle.parentElement;
+    if (!workspace) return;
+    const bounds = workspace.getBoundingClientRect();
+    const availableWidth = bounds.width - handle.offsetWidth;
+    const minimumPaneWidth = Math.min(280, availableWidth / 2);
+    const leftWidth = Math.min(
+      availableWidth - minimumPaneWidth,
+      Math.max(minimumPaneWidth, clientX - bounds.left),
+    );
+    setSplitPosition((leftWidth / availableWidth) * 100);
+  }
+
+  return {
+    sidebarWidth,
+    setSidebarWidth,
+    rightPaneWidth,
+    setRightPaneWidth,
+    sidebarOpen,
+    setSidebarOpen,
+    rightPaneOpen,
+    setRightPaneOpen,
+    splitPosition,
+    setSplitPosition,
+    beginHorizontalResize,
+    finishHorizontalResize,
+    resizeSidebar,
+    resizeRightPane,
+    resizeSplit,
+  };
+}

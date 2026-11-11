@@ -1,0 +1,499 @@
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { createMlxWorker, terminateMlxWorker } from './worker.js'
+import { findModelSnapshot } from './snapshots.js'
+import { helperPath, nativeMlxAvailable } from './helper-path.js'
+import { cancellationError } from './ocr-models.js'
+import { createMlxTasks } from './tasks.js'
+import { createMemoryManager } from './memory-manager.js'
+import { createActiveHeavyTracker } from './active-model.js'
+import { MODEL_DEFINITIONS } from './model-definitions.js'
+import {
+  CAPTION_MODEL_IDS, CAPTION_WORKER_DEFINITIONS,
+  baseModelId, captionRollup, captionWorkerKey, isCaptionModelId,
+  readCaptionModelPreference, writeCaptionModelPreference,
+} from './caption-models.js'
+import { installationProgress } from './progress.js'
+import { readTranscriptionModelPreference, writeTranscriptionModelPreference } from '../transcription/models.js'
+
+// warmKeepAliveMs only caps the per-purpose idle timeouts; memoryOptions (memory-manager.js) are test hooks.
+export function createMlxService({ projectRoot, modelRoot, mlxHelperPath, warmKeepAliveMs = Infinity, ...memoryOptions }) {
+  const cacheRoot = path.join(modelRoot, 'hf-cache')
+  const executable = helperPath(projectRoot, mlxHelperPath)
+  const workers = new Map()
+  const starting = new Map()
+  const startingWorkers = new Map()
+  const [installing, removing, unloading, stopping] = [new Set(), new Set(), new Set(), new Set()]
+  const stoppingJobs = new Map()
+  const generationSelectionPath = path.join(modelRoot, 'generation-model.json')
+  const idleTimers = new Map()
+  const activeRequests = new Map()
+  const requestWaiters = new Map()
+  const modelActivities = new Map()
+  const externalModels = new Map()
+  const externalModelAdapters = new Map()
+  let transcriptionSelectionTail = Promise.resolve()
+  let heavyQueue = Promise.resolve()
+  const loadingModels = new Set()
+  let closed = false
+  const isAvailable = nativeMlxAvailable()
+  const activeHeavy = createActiveHeavyTracker({ workers, workerDefinition })
+  const memory = createMemoryManager({ workers, starting, stopping, activeRequests, modelActivities, workerDefinition,
+    warmKeepAliveMs, stopModel: (id) => stopModel(id), ...memoryOptions })
+
+  function modelDefinition(id) {
+    const model = MODEL_DEFINITIONS[id]
+    if (!model) throw Object.assign(new Error('Unknown MLX model.'), { statusCode: 404 })
+    return model
+  }
+
+  // Public models plus the internal caption workers; only the former are exposed through the API.
+  function workerDefinition(key) {
+    const definition = CAPTION_WORKER_DEFINITIONS[key] || MODEL_DEFINITIONS[key]
+    if (!definition) throw Object.assign(new Error('Unknown MLX model.'), { statusCode: 404 })
+    return definition
+  }
+
+  const allWorkerDefinitions = () => [...Object.values(MODEL_DEFINITIONS), ...Object.values(CAPTION_WORKER_DEFINITIONS)]
+
+  function withModelActivity(id, operation, { activate = true } = {}) {
+    const definition = workerDefinition(id)
+    const run = async () => {
+      try {
+        if (closed) throw new Error('The MLX service is shutting down.')
+        if (activate && definition.purpose !== 'embeddings') {
+          // A model and its caption worker share one snapshot: never keep both copies of the weights.
+          // Everything else is arbitrated by the memory manager (memory.makeRoom in startModel).
+          for (const other of allWorkerDefinitions()) {
+            if (other.id !== id && baseModelId(other.id) === baseModelId(id)) await stopModel(other.id)
+          }
+          activeHeavy.activate(id)
+        }
+        return await operation()
+      } finally {
+        modelActivities.set(id, Math.max(0, (modelActivities.get(id) || 1) - 1))
+      }
+    }
+    modelActivities.set(id, (modelActivities.get(id) || 0) + 1)
+    if (definition.purpose === 'embeddings') return run()
+    const activity = heavyQueue.then(run, run)
+    heavyQueue = activity.catch(() => {})
+    return activity
+  }
+
+  function registerExternalModel(id, adapter) {
+    if (!['transcription', 'diarization'].includes(MODEL_DEFINITIONS[id]?.purpose) || !adapter) throw new Error('Invalid external MLX model adapter.')
+    if (!externalModels.has(id)) externalModels.set(id, adapter)
+    const adapters = externalModelAdapters.get(id) || new Set()
+    adapters.add(adapter)
+    externalModelAdapters.set(id, adapters)
+    return () => { if (externalModels.get(id) === adapter) externalModels.delete(id) }
+  }
+
+  async function selectedGenerationModel() {
+    try {
+      const saved = JSON.parse(await fs.readFile(generationSelectionPath, 'utf8'))
+      if (typeof saved.id === 'string' && MODEL_DEFINITIONS[saved.id]?.purpose === 'generation') return saved.id
+    } catch { /* use the migrated default */ }
+    return 'gemma4'
+  }
+
+  async function selectGenerationModel(id) {
+    const definition = modelDefinition(id)
+    if (definition.purpose !== 'generation') throw Object.assign(new Error('Choose a generation model.'), { statusCode: 400 })
+    return withModelActivity(id, async () => {
+      const previous = await selectedGenerationModel()
+      if (previous !== id) await stopModel(previous)
+      await fs.mkdir(modelRoot, { recursive: true })
+      const temporaryPath = `${generationSelectionPath}.${randomUUID()}.tmp`
+      await fs.writeFile(temporaryPath, JSON.stringify({ id }), 'utf8')
+      await fs.rename(temporaryPath, generationSelectionPath)
+      return status()
+    }, { activate: false })
+  }
+
+  const selectedCaptionModel = () => readCaptionModelPreference(modelRoot)
+
+  async function selectCaptionModel(id) {
+    if (id !== null && !isCaptionModelId(id)) throw Object.assign(new Error('Choose a caption model.'), { statusCode: 400 })
+    const previous = await selectedCaptionModel()
+    if (previous && previous !== id) {
+      const key = captionWorkerKey(previous)
+      await withModelActivity(key, () => stopModel(key), { activate: false })
+    }
+    await writeCaptionModelPreference(modelRoot, id)
+    return status()
+  }
+
+  async function selectedTranscriptionModel() {
+    return readTranscriptionModelPreference(modelRoot)
+  }
+
+  async function selectTranscriptionModel(id) {
+    const definition = MODEL_DEFINITIONS[id]
+    if (!definition || definition.purpose !== 'transcription') {
+      throw Object.assign(new Error('Choose a transcription model.'), { statusCode: 400 })
+    }
+    const previousSelection = transcriptionSelectionTail
+    let finishSelection
+    transcriptionSelectionTail = new Promise((resolve) => { finishSelection = resolve })
+    await previousSelection
+    try {
+      return await withModelActivity(id, async () => {
+        const previous = await selectedTranscriptionModel()
+        if (previous !== id) await stopModel(previous)
+        await writeTranscriptionModelPreference(modelRoot, id)
+        return status()
+      }, { activate: false })
+    } finally { finishSelection() }
+  }
+
+  async function isInstalled(definition) {
+    return Boolean(await findModelSnapshot(cacheRoot, definition))
+  }
+
+  async function waitForRequests(id) {
+    if ((activeRequests.get(id) || 0) === 0) return
+    await new Promise((resolve) => {
+      const waiters = requestWaiters.get(id) || new Set()
+      waiters.add(resolve)
+      requestWaiters.set(id, waiters)
+    })
+  }
+
+  function notifyRequestsFinished(id) {
+    if ((activeRequests.get(id) || 0) > 0) return
+    for (const resolve of requestWaiters.get(id) || []) resolve()
+    requestWaiters.delete(id)
+  }
+
+  function stopIdleTimer(id) {
+    const timer = idleTimers.get(id)
+    if (timer) clearTimeout(timer)
+    idleTimers.delete(id)
+  }
+
+  function armIdleTimer(id, worker) {
+    stopIdleTimer(id)
+    const timer = setTimeout(() => {
+      if (workers.get(id) !== worker) return
+      if ((activeRequests.get(id) || 0) > 0) {
+        armIdleTimer(id, worker)
+        return
+      }
+      const expire = async () => {
+        if (workers.get(id) !== worker || (activeRequests.get(id) || 0) > 0) return
+        await stopModel(id, worker)
+      }
+      const work = workerDefinition(id).purpose === 'embeddings'
+        ? expire()
+        : withModelActivity(id, expire, { activate: false })
+      void work.catch(() => {})
+    }, memory.idleMs(id))
+    timer.unref?.()
+    idleTimers.set(id, timer)
+  }
+
+  async function startModel(id, { allowDownload = false, signal = null } = {}) {
+    const definition = workerDefinition(id)
+    if (closed) throw new Error('The MLX service is shutting down.')
+    if (removing.has(baseModelId(id))) throw Object.assign(new Error('This model is being removed. Try again when it finishes.'), { statusCode: 409 })
+    if (stopping.has(id)) throw Object.assign(new Error('This model is stopping. Try again when it finishes.'), { statusCode: 409 })
+    if (!isAvailable) throw new Error('Native MLX models require Apple Silicon and macOS 14 or newer.')
+    if (workers.has(id)) return workers.get(id)
+    if (starting.has(id)) return starting.get(id)
+    let worker
+    const promise = (async () => {
+      let abortStartup
+      let abortTimer
+      try {
+        const snapshot = ['transcription', 'diarization'].includes(definition.purpose)
+          ? await externalModels.get(id)?.snapshot?.()
+          : await findModelSnapshot(cacheRoot, definition)
+        if (closed) throw new Error('The MLX service is shutting down.')
+        if (!allowDownload && !snapshot) throw new Error(`${definition.name} is not installed. Choose Install to download it first.`)
+        await fs.mkdir(cacheRoot, { recursive: true })
+        await memory.makeRoom(id)
+        if (closed) throw new Error('The MLX service is shutting down.')
+        worker = createMlxWorker({ id, definition, executable, cacheRoot, modelDirectory: snapshot, onExit: (closed) => {
+          if (workers.get(id) === closed) {
+            workers.delete(id)
+            stopIdleTimer(id)
+          }
+          activeHeavy.forget(id)
+        } })
+        startingWorkers.set(id, worker)
+        if (signal) {
+          abortStartup = () => {
+            worker.child.kill('SIGTERM')
+            abortTimer = setTimeout(() => worker.child.kill('SIGKILL'), 2_000)
+          }
+          if (signal.aborted) abortStartup()
+          else signal.addEventListener('abort', abortStartup, { once: true })
+        }
+        await worker.ready
+        if (signal?.aborted) throw cancellationError(definition)
+        if (closed) throw new Error('The MLX service is shutting down.')
+        workers.set(id, worker)
+        memory.noteUsed(id, worker)
+        armIdleTimer(id, worker)
+        return worker
+      } catch (error) {
+        if (worker) await terminateMlxWorker(worker)
+        if (signal?.aborted) throw cancellationError(definition)
+        throw error
+      } finally {
+        clearTimeout(abortTimer)
+        if (abortStartup) signal?.removeEventListener('abort', abortStartup)
+        if (startingWorkers.get(id) === worker) startingWorkers.delete(id)
+        if (starting.get(id) === promise) starting.delete(id)
+      }
+    })()
+    starting.set(id, promise)
+    return promise
+  }
+
+  async function stopModel(id, expectedWorker = null) {
+    if (stoppingJobs.has(id)) return stoppingJobs.get(id)
+    const operation = (async () => {
+      stopping.add(id)
+      try {
+        if (starting.has(id)) {
+          try { await starting.get(id) } catch { return }
+        }
+        await waitForRequests(id)
+        const worker = workers.get(id)
+        if (!worker || (expectedWorker && worker !== expectedWorker)) return
+        stopIdleTimer(id)
+        try { await worker.request('shutdown', {}, 5_000) } catch { /* forced termination below */ }
+        await terminateMlxWorker(worker)
+        workers.delete(id)
+      } finally {
+        stopping.delete(id)
+        stoppingJobs.delete(id)
+      }
+    })()
+    stoppingJobs.set(id, operation)
+    return operation
+  }
+
+  async function touchModel(id, worker) {
+    if (worker) memory.noteUsed(id, worker)
+    if (!closed && workers.get(id) === worker && (activeRequests.get(id) || 0) === 0) armIdleTimer(id, worker)
+  }
+
+  async function run(id, operation, payload, timeoutMs, signal = null, { onEvent = null, unloadAfter = false } = {}) {
+    const definition = workerDefinition(id)
+    if (removing.has(baseModelId(id))) throw Object.assign(new Error('This model is being removed. Try again when it finishes.'), { statusCode: 409 })
+    if (unloading.has(id)) throw Object.assign(new Error('This model is stopping. Try again when it finishes.'), { statusCode: 409 })
+    if (stopping.has(id)) await stoppingJobs.get(id)
+    const execute = async () => {
+      if (removing.has(baseModelId(id)) || unloading.has(id)) throw Object.assign(new Error('This model is stopping. Try again when it finishes.'), { statusCode: 409 })
+      if (stopping.has(id)) await stoppingJobs.get(id)
+      activeRequests.set(id, (activeRequests.get(id) || 0) + 1)
+      let worker
+      let abort
+      let abortTimer
+      try {
+        if (signal?.aborted) throw cancellationError(definition)
+        stopIdleTimer(id)
+        worker = await startModel(id, { signal })
+        if (signal?.aborted) throw cancellationError(definition)
+        if (signal) {
+          abort = () => {
+            worker.child.kill('SIGTERM')
+            abortTimer = setTimeout(() => worker.child.kill('SIGKILL'), 2_000)
+          }
+          signal.addEventListener('abort', abort, { once: true })
+        }
+        return await worker.request(operation, payload, timeoutMs, onEvent)
+      } catch (error) {
+        if (signal?.aborted && worker) {
+          await terminateMlxWorker(worker, 2_000)
+          workers.delete(id)
+          throw cancellationError(definition)
+        }
+        if (worker && (worker.child.killed || worker.closed || !worker.child.stdin.writable)) await terminateMlxWorker(worker, 2_000)
+        throw error
+      } finally {
+        clearTimeout(abortTimer)
+        if (abort) signal.removeEventListener('abort', abort)
+        activeRequests.set(id, Math.max(0, (activeRequests.get(id) || 1) - 1))
+        if (worker) await touchModel(id, worker)
+        notifyRequestsFinished(id)
+      }
+    }
+    const executeWithCleanup = async () => {
+      let result
+      let requestError
+      try { result = await execute() } catch (error) { requestError = error }
+      if (unloadAfter) {
+        try { await stopModel(id) } catch (cleanupError) { if (!requestError) requestError = cleanupError }
+      }
+      if (requestError) throw requestError
+      return result
+    }
+    return definition.purpose === 'embeddings'
+      ? executeWithCleanup() : withModelActivity(id, executeWithCleanup)
+  }
+
+  async function status() {
+    const [selected, selectedTranscription, selectedCaption] = await Promise.all([
+      selectedGenerationModel(), selectedTranscriptionModel(), selectedCaptionModel(),
+    ])
+    const models = await Promise.all(Object.values(MODEL_DEFINITIONS).map(async (definition) => {
+      const external = externalModels.get(definition.id)
+      const externalStatus = external?.status ? await external.status() : null
+      const caption = captionRollup(definition.id, { workers, starting, activeRequests, modelActivities })
+      const worker = workers.get(definition.id) || caption.worker
+      return {
+        id: definition.id,
+        name: definition.name,
+        purpose: definition.purpose,
+        downloadSizeBytes: definition.downloadSizeBytes,
+        downloadSizeIsEstimate: true,
+        selected: definition.purpose === 'generation' ? selected === definition.id
+          : definition.purpose === 'transcription' && selectedTranscription === definition.id,
+        installed: externalStatus ? Boolean(externalStatus.installed) : await isInstalled(definition),
+        loaded: externalStatus?.loaded ?? Boolean(worker),
+        loading: loadingModels.has(definition.id) || starting.has(definition.id) || caption.loading || Boolean(externalStatus?.loading),
+        busy: (activeRequests.get(definition.id) || 0) > 0 || (modelActivities.get(definition.id) || 0) > 0
+          || caption.busy || Boolean(externalStatus?.busy),
+        requestCount: (activeRequests.get(definition.id) || 0) + caption.requests + (externalStatus?.requestCount || 0),
+        memory: externalStatus?.memory || (worker?.memory
+          ? { activeBytes: worker.memory.activeBytes || 0,
+            cacheBytes: worker.memory.cacheBytes || 0,
+            peakResidentBytes: worker.memory.peakResidentBytes || 0 }
+          : null),
+      }
+    }))
+    let helperAvailable = false
+    try { await fs.access(executable); helperAvailable = isAvailable } catch { /* build step has not run */ }
+    return {
+      available: isAvailable,
+      helperAvailable,
+      keepAliveMs: memory.generationIdleMs(),
+      activeModel: baseModelId(activeHeavy.current()),
+      installing: [...new Set([...installing, ...models.filter((model) => model.loading).map((model) => model.id)])],
+      models,
+      selectedGenerationModel: selected,
+      selectedTranscriptionModel: selectedTranscription,
+      selectedCaptionModel: selectedCaption,
+      downloads: await Promise.all([...new Set([...installing, ...models.filter((model) => model.loading).map((model) => model.id)])]
+        .map(async (id) => {
+          const external = externalModels.get(id)
+          const externalStatus = external?.status ? await external.status() : null
+          const progress = externalStatus?.progress || await installationProgress({
+            cacheRoot,
+            definition: MODEL_DEFINITIONS[id],
+            installing: installing.has(id),
+            isInstalled,
+            worker: startingWorkers.get(id) || workers.get(id),
+          })
+          return { id, progress }
+        })),
+    }
+  }
+
+  async function install(id) {
+    const definition = modelDefinition(id)
+    const external = externalModels.get(id)
+    if (external) return withModelActivity(id, async () => {
+      await stopModel(id)
+      return external.install()
+    })
+    loadingModels.add(id)
+    const operation = async () => {
+      installing.add(id)
+      try { await startModel(id, { allowDownload: true }); return await status() }
+      finally { installing.delete(id); loadingModels.delete(id) }
+    }
+    return definition.purpose === 'embeddings' ? operation() : withModelActivity(id, operation)
+  }
+
+  async function load(id) {
+    const definition = modelDefinition(id)
+    const external = externalModels.get(id)
+    if (external?.load) return withModelActivity(id, async () => external.load())
+    loadingModels.add(id)
+    const operation = async () => {
+      try { await startModel(id); return status() }
+      finally { loadingModels.delete(id) }
+    }
+    return definition.purpose === 'embeddings' ? operation() : withModelActivity(id, operation)
+  }
+
+  async function unload(id) {
+    const definition = modelDefinition(id)
+    const external = externalModels.get(id)
+    if (external?.unload) return withModelActivity(id, async () => external.unload(), { activate: false })
+    const operation = async () => {
+      if (definition.purpose === 'embeddings') unloading.add(id)
+      try {
+        await stopModel(id)
+        if (isCaptionModelId(id)) await stopModel(captionWorkerKey(id))
+        return status()
+      } finally { unloading.delete(id) }
+    }
+    return definition.purpose === 'embeddings' ? operation() : withModelActivity(id, operation, { activate: false })
+  }
+
+  async function remove(id) {
+    const definition = modelDefinition(id)
+    const external = externalModels.get(id)
+    if (external?.remove) return withModelActivity(id, async () => {
+      await stopModel(id)
+      return external.remove()
+    }, { activate: false })
+    if (removing.has(id)) throw Object.assign(new Error('This model is already being removed.'), { statusCode: 409 })
+    removing.add(id)
+    try {
+      const operation = async () => {
+        if (definition.purpose === 'embeddings') await waitForRequests(id)
+        await stopModel(id)
+        if (isCaptionModelId(id)) await stopModel(captionWorkerKey(id))
+        const repoRoot = path.join(cacheRoot, `models--${definition.repository.replaceAll('/', '--')}`)
+        await fs.rm(repoRoot, { recursive: true, force: true })
+        return status()
+      }
+      return definition.purpose === 'embeddings' ? await operation() : await withModelActivity(id, operation, { activate: false })
+    } finally {
+      removing.delete(id)
+    }
+  }
+
+  async function generate(messages, options = {}) {
+    const id = options.modelId || await selectedGenerationModel()
+    const definition = modelDefinition(id)
+    if (definition.purpose !== 'generation') throw new Error('The selected MLX model cannot generate text.')
+    const response = await run(id, 'generate', { messages, maxTokens: options.maxTokens, temperature: options.temperature }, 15 * 60_000)
+    return { ...response, modelId: id, model: definition.repository }
+  }
+
+  async function embed(input) {
+    return run('embeddinggemma', 'embed', { input }, 2 * 60_000)
+  }
+
+  const { transcribe, diarize, extractText, captionImage } = createMlxTasks({
+    run, isInstalled, modelDefinition, selectedTranscriptionModel, selectedCaptionModel,
+  })
+
+  async function close() {
+    closed = true
+    memory.monitor.stop()
+    for (const id of idleTimers.keys()) stopIdleTimer(id)
+    const activeWorkers = new Set([...workers.values(), ...startingWorkers.values()])
+    const termination = Promise.all([...activeWorkers].map((worker) => terminateMlxWorker(worker)))
+    const adapterClosures = [...externalModelAdapters.values()].flatMap((adapters) => [...adapters])
+      .map((adapter) => adapter.close?.()).filter(Boolean)
+    await Promise.allSettled([...starting.values(), termination, ...adapterClosures])
+    await heavyQueue
+    await Promise.all([...activeWorkers].map((worker) => terminateMlxWorker(worker)))
+    workers.clear()
+  }
+
+  return { status, install, load, unload, remove, selectGenerationModel, selectedGenerationModel,
+    selectTranscriptionModel, selectedTranscriptionModel, selectCaptionModel, selectedCaptionModel, captionImage, generate, embed, transcribe, diarize, extractText, close, isBusy: () => [...modelActivities.values()].some((count) => count > 0), withModelActivity, registerExternalModel, keepAliveMs: memory.generationIdleMs(),
+    modelDefinitions: MODEL_DEFINITIONS, captionModelIds: CAPTION_MODEL_IDS }
+}

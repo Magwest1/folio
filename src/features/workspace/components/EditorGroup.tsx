@@ -1,0 +1,283 @@
+import { useEffect } from "react";
+import type { TabGroup } from "../../../domain/types.ts";
+import type { WorkspaceEditorUi } from "../hooks/useWorkspaceEditorUi.ts";
+import { isUntitledId } from "../../../lib/workspace.ts";
+import { EditorTabs } from "../../tabs/EditorTabs.tsx";
+import { DocumentPane } from "./DocumentPane.tsx";
+import { DocumentView } from "./DocumentView.tsx";
+import { HistoryDocumentView } from "./HistoryDocumentView.tsx";
+import type {
+  EditorWorkspaceActions,
+  EditorWorkspaceModel,
+  EditorWorkspaceProps,
+} from "../types.ts";
+
+type EditorGroupProps = {
+  group: TabGroup;
+  groupCount: number;
+  model: Omit<EditorWorkspaceModel, "groups" | "splitPosition" | "message"> & {
+    filingOwnerGroupIds: Record<string, string>;
+  };
+  actions: Omit<
+    EditorWorkspaceActions,
+    | "beginHorizontalResize"
+    | "resizeSplit"
+    | "finishHorizontalResize"
+    | "resetSplit"
+    | "dismissMessage"
+    | "beforeHistoryRestore"
+    | "historyRestored"
+  >;
+  ui: WorkspaceEditorUi;
+  historyPreview?: EditorWorkspaceProps["historyPreview"];
+  paneControls?: {
+    leftOpen: boolean;
+    rightOpen: boolean;
+    updateAvailable: boolean;
+    onToggleLeft: () => void;
+    onToggleRight: () => void;
+  };
+};
+
+export function EditorGroup({
+  group,
+  groupCount,
+  model,
+  actions,
+  ui,
+  historyPreview,
+  paneControls,
+}: EditorGroupProps) {
+  const document = group.activeId ? model.documents[group.activeId] : null;
+  const loading = Boolean(
+    group.activeId && model.loadingDocuments.has(group.activeId),
+  );
+  const editKey = document ? `${group.id}:${document.id}` : "";
+  const saving = Boolean(document && model.savingDocuments.has(document.id));
+  const focusRequest =
+    model.editorFocusRequest?.groupId === group.id &&
+    model.editorFocusRequest.documentId === document?.id
+      ? model.editorFocusRequest
+      : null;
+
+  useEffect(() => {
+    if (focusRequest && document && !document.deletable)
+      actions.consumeEditorFocusRequest(focusRequest.id);
+  }, [actions, document, focusRequest]);
+
+  return (
+    <section
+      className={`editor-group ${model.activeGroupId === group.id ? "active" : ""} ${ui.dropGroupId === group.id ? "drop-target" : ""}`}
+      onMouseDown={() => actions.activateGroup(group.id)}
+      onDragOver={(event) => {
+        if (!ui.draggedTab) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        ui.setDropGroupId(group.id);
+        if (!(event.target instanceof Element) || !event.target.closest(".editor-tab"))
+          ui.setDropTabSlot({ groupId: group.id, index: group.tabs.length });
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          ui.setDropGroupId(null);
+          ui.setDropTabSlot(null);
+        }
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        const payload = event.dataTransfer.getData("application/x-folio-tab");
+        let tab = ui.draggedTab;
+        if (payload) {
+          try {
+            const parsed = JSON.parse(payload) as {
+              documentId?: unknown;
+              groupId?: unknown;
+            };
+            if (
+              typeof parsed.documentId === "string" &&
+              typeof parsed.groupId === "string"
+            ) {
+              tab = {
+                documentId: parsed.documentId,
+                groupId: parsed.groupId,
+              };
+            }
+          } catch {
+            tab = null;
+          }
+        }
+        if (tab) {
+          const dropIndex = ui.dropTabSlot?.groupId === group.id
+            ? ui.dropTabSlot.index
+            : undefined;
+          const sourceIndex = tab.groupId === group.id
+            ? group.tabs.indexOf(tab.documentId)
+            : -1;
+          const targetIndex = dropIndex !== undefined && sourceIndex !== -1 && sourceIndex < dropIndex
+            ? dropIndex - 1
+            : dropIndex;
+          if (targetIndex === undefined)
+            actions.moveTabToGroup(tab.documentId, tab.groupId, group.id);
+          else
+            actions.moveTabToGroup(tab.documentId, tab.groupId, group.id, targetIndex);
+        }
+        ui.setDraggedTab(null);
+        ui.setDropGroupId(null);
+        ui.setDropTabSlot(null);
+      }}
+    >
+      <EditorTabs
+        group={group}
+        groupCount={groupCount}
+        titleForId={actions.titleForId}
+        isUntitledId={isUntitledId}
+        onActivate={actions.activateTab}
+        onPinTab={actions.pinTab}
+        paneControls={paneControls}
+        dropIndex={ui.dropTabSlot?.groupId === group.id ? ui.dropTabSlot.index : null}
+        onDragStart={(event, id, groupId) => {
+          const payload = { documentId: id, groupId };
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData(
+            "application/x-folio-tab",
+            JSON.stringify(payload),
+          );
+          ui.setDraggedTab(payload);
+        }}
+        onDragOverTab={(event, targetId, targetGroupId) => {
+          if (!ui.draggedTab) return;
+          const targetIndex = group.tabs.indexOf(targetId) +
+            (event.clientX >= event.currentTarget.getBoundingClientRect().left + event.currentTarget.getBoundingClientRect().width / 2 ? 1 : 0);
+          ui.setDropGroupId(targetGroupId);
+          ui.setDropTabSlot({ groupId: targetGroupId, index: targetIndex });
+        }}
+        onDropTab={(event, targetId, targetGroupId) => {
+          event.preventDefault();
+          event.stopPropagation();
+          let tab = ui.draggedTab;
+          const payload = event.dataTransfer.getData("application/x-folio-tab");
+          if (payload) {
+            try {
+              const parsed = JSON.parse(payload) as { documentId?: unknown; groupId?: unknown };
+              if (typeof parsed.documentId === "string" && typeof parsed.groupId === "string")
+                tab = { documentId: parsed.documentId, groupId: parsed.groupId };
+            } catch {
+              tab = null;
+            }
+          }
+          if (!tab) return;
+          const targetIndex = group.tabs.indexOf(targetId) +
+            (event.clientX >= event.currentTarget.getBoundingClientRect().left + event.currentTarget.getBoundingClientRect().width / 2 ? 1 : 0);
+          const sourceIndex = tab.groupId === targetGroupId ? group.tabs.indexOf(tab.documentId) : -1;
+          const adjustedIndex = sourceIndex !== -1 && sourceIndex < targetIndex
+            ? targetIndex - 1
+            : targetIndex;
+          actions.moveTabToGroup(tab.documentId, tab.groupId, targetGroupId, adjustedIndex);
+          ui.setDraggedTab(null);
+          ui.setDropGroupId(null);
+          ui.setDropTabSlot(null);
+        }}
+        onDragEnd={() => {
+          ui.setDraggedTab(null);
+          ui.setDropGroupId(null);
+          ui.setDropTabSlot(null);
+        }}
+        onCloseTab={actions.closeTab}
+        onNewTab={actions.createNewTab}
+        onSplit={actions.splitWorkspace}
+        onCloseGroup={actions.closeGroup}
+      />
+
+      <DocumentPane
+        groupId={group.id}
+        hasDocument={Boolean(document)}
+        loading={loading}
+        onCreateNewTab={actions.createNewTab}
+      >
+        {document && <>
+          <div className={historyPreview ? "history-editor-underlay" : "history-editor-underlay is-present"} aria-hidden={historyPreview ? true : undefined} inert={historyPreview ? true : undefined}>
+          <DocumentView
+            groupId={group.id}
+            document={document}
+            editKey={editKey}
+            draft={model.drafts[document.id]}
+            saving={saving}
+            focusRequestId={focusRequest?.id}
+            onFocusRequestConsumed={
+              focusRequest
+                ? () => actions.consumeEditorFocusRequest(focusRequest.id)
+                : undefined
+            }
+            deletingNoteId={model.deletingNoteId}
+            movingFileId={model.movingFileId}
+            exportingNoteId={model.exportingNoteId}
+            filingDirectories={model.filingDirectories}
+            editingMetadataKey={ui.editingMetadataKey}
+            metadataDrafts={ui.metadataDrafts}
+            pathDraft={ui.pathDrafts[document.id]}
+            tagDraft={ui.tagDrafts[document.id]}
+            getScrollTop={actions.getDocumentScrollTop}
+            getSelection={actions.getDocumentSelection}
+            onScroll={actions.rememberDocumentScrollTop}
+            onSelectionChange={actions.rememberDocumentSelection}
+            onBeginMetadataEditing={ui.beginMetadataEditing}
+            onChangeMetadataDraft={ui.changeMetadataDraft}
+            onFinishMetadataEditing={(key, target, field, value) =>
+              ui.finishMetadataEditing(
+                key,
+                target,
+                field,
+                value,
+                actions.persistMetadata,
+              )
+            }
+            onChangeContent={actions.changeDraftContent}
+            onFileDraft={actions.fileDraft}
+            onEditorError={actions.notifyMessage}
+            onBeginEditing={actions.beginEditing}
+            onFinishEditing={actions.finishEditing}
+            onOpenDocument={actions.openDocument}
+            onToggleTask={actions.toggleTaskCheckbox}
+            onBeginPathEditing={ui.beginPathEditing}
+            onChangePath={ui.changePathDraft}
+            onFinishPathEditing={(target, value) =>
+              ui.finishPathEditing(target, value, actions.moveBundleFile)
+            }
+            onResetPath={ui.resetPathDraft}
+            onBeginTagEditing={ui.beginTagEditing}
+            onChangeTag={ui.changeTagDraft}
+            onFinishTagEditing={(target, value) =>
+              ui.finishTagEditing(target, value, (edited, _content, tags) =>
+                actions.persistDocument(
+                  edited,
+                  model.drafts[edited.id] ?? edited.content,
+                  tags,
+                ),
+              )
+            }
+            onDelete={actions.deleteFiledNote}
+            onExport={actions.exportDocument}
+            onTranslatedExport={actions.deliverTranslatedExport}
+            filing={
+              model.filingOwnerGroupIds[document.id] === group.id
+                ? model.filingQueues[document.id]?.[0]
+                : undefined
+            }
+            refile={model.activeGroupId === group.id ? model.refileEntries[document.id] : undefined}
+            focusFiling={model.activeGroupId === group.id}
+            onChangeFilingFields={actions.changeFilingFields}
+            onRevealStandaloneFiling={actions.revealStandaloneFiling}
+            onConfirmFiling={actions.confirmFiling}
+            onDismissFiling={actions.dismissFiling}
+            onStartRefile={actions.startRefile}
+            onChangeRefileFields={actions.changeRefileFields}
+            onAcceptRefile={actions.acceptRefile}
+            onDismissRefile={actions.dismissRefile}
+          />
+          </div>
+          {historyPreview && <HistoryDocumentView document={document} snapshot={historyPreview.snapshot} loading={historyPreview.loading} failed={historyPreview.failed} presentContent={historyPreview.presentContent} />}
+        </>}
+      </DocumentPane>
+    </section>
+  );
+}

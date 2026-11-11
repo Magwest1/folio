@@ -1,0 +1,46 @@
+import { getActiveBundleId } from "./api.ts";
+
+export function conceptUrl(id: string, bundleId = getActiveBundleId()) {
+  const bundle = bundleId ? `&bundle=${encodeURIComponent(bundleId)}` : "";
+  return `/api/concepts?path=${encodeURIComponent(id)}${bundle}`;
+}
+
+export function resolveBundleLink(currentId: string, href?: string) {
+  if (!href || href.startsWith("#") || /^[a-z][a-z\d+.-]*:/i.test(href))
+    return null;
+  let [filePath] = href.split(/[?#]/);
+  try {
+    filePath = decodeURIComponent(filePath);
+  } catch {
+    return null;
+  }
+  if (!filePath.endsWith(".md")) return null;
+  const segments = filePath.startsWith("/")
+    ? []
+    : currentId.split("/").filter(Boolean).slice(0, -1);
+  for (const segment of filePath.split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") segments.pop();
+    else segments.push(segment);
+  }
+  return `/${segments.join("/")}`;
+}
+
+export function directoryForId(id: string) {
+  const directory = id.split("/").slice(0, -1).join("/");
+  return directory || "/";
+}
+
+export function normalizeDirectoryInput(value: string) {
+  const parts = value.trim().replaceAll("\\", "/").split("/").filter(Boolean);
+  return parts.length ? `/${parts.join("/")}` : "/";
+}
+
+export function isInternalBundlePath(value: string) {
+  return (
+    value === "/references" ||
+    value.startsWith("/references/") ||
+    value === "/assets" ||
+    value.startsWith("/assets/")
+  );
+}

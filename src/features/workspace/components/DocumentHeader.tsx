@@ -1,0 +1,151 @@
+import type { NoteLanguageSource, NoteTranslationTarget, ViewerDocument } from "../../../domain/types.ts";
+import type { MetadataField } from "../types.ts";
+import { DocumentTranslationToggle } from "./DocumentTranslationToggle.tsx";
+
+type DocumentHeaderProps = {
+  groupId: string;
+  document: ViewerDocument;
+  editingKey: string | null;
+  drafts: Record<string, string>;
+  onBeginEditing: (
+    groupId: string,
+    document: ViewerDocument,
+    field: MetadataField,
+  ) => void;
+  onChangeDraft: (key: string, value: string) => void;
+  onFinishEditing: (
+    key: string,
+    document: ViewerDocument,
+    field: MetadataField,
+    value: string,
+  ) => void;
+  readOnly?: boolean;
+  languageToggle?: {
+    enabled: boolean;
+    saving: boolean;
+    error: string;
+    onEnabledChange: (enabled: boolean) => void;
+    value: NoteTranslationTarget | null;
+    available: boolean;
+    originalLanguage: NoteTranslationTarget | null;
+    originalSource: NoteLanguageSource | null;
+    onChange: (target: NoteTranslationTarget) => void;
+  };
+};
+
+export function DocumentHeader({
+  groupId,
+  document,
+  editingKey,
+  drafts,
+  onBeginEditing,
+  onChangeDraft,
+  onFinishEditing,
+  readOnly = false,
+  languageToggle,
+}: DocumentHeaderProps) {
+  const titleKey = `${groupId}:${document.id}:title`;
+  const descriptionKey = `${groupId}:${document.id}:description`;
+  const hasToolbar = Boolean(languageToggle);
+
+  return (
+    <header className={`document-heading${hasToolbar ? " has-toolbar" : ""}`}>
+      {hasToolbar ? (
+        <div className="document-toolbar" role="toolbar" aria-label="Note actions">
+          {languageToggle ? <DocumentTranslationToggle {...languageToggle} /> : null}
+        </div>
+      ) : null}
+      <p>
+        {document.type}
+        {document.stale ? " / stale" : ""}
+      </p>
+      {readOnly ? (
+        <h1>{document.title}</h1>
+      ) : editingKey === titleKey ? (
+        <input
+          className="document-title-editor"
+          value={drafts[titleKey] ?? document.title}
+          onChange={(event) => onChangeDraft(titleKey, event.target.value)}
+          onBlur={(event) =>
+            onFinishEditing(
+              titleKey,
+              document,
+              "title",
+              event.currentTarget.value,
+            )
+          }
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.currentTarget.value = document.title;
+              event.currentTarget.blur();
+            }
+          }}
+          aria-label={`Title for ${document.title}`}
+          autoFocus
+        />
+      ) : document.movable ? (
+        <button
+          type="button"
+          className="document-title"
+          onClick={() =>
+            onBeginEditing(groupId, document, "title")
+          }
+          title="Click to edit title"
+        >
+          {document.title}
+        </button>
+      ) : (
+        <h1>{document.title}</h1>
+      )}
+      {readOnly ? (
+        <span
+          className={`document-description${document.description ? "" : " empty"}`}
+          aria-hidden={document.description ? undefined : true}
+        >
+          {document.description || "\u00a0"}
+        </span>
+      ) : editingKey === descriptionKey ? (
+        <input
+          className="document-description-editor"
+          value={drafts[descriptionKey] ?? document.description}
+          onChange={(event) =>
+            onChangeDraft(descriptionKey, event.target.value)
+          }
+          onBlur={(event) =>
+            onFinishEditing(
+              descriptionKey,
+              document,
+              "description",
+              event.currentTarget.value,
+            )
+          }
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.currentTarget.value = document.description;
+              event.currentTarget.blur();
+            }
+          }}
+          aria-label={`Description for ${document.title}`}
+          autoFocus
+        />
+      ) : document.deletable ? (
+        <button
+          type="button"
+          className={`document-description ${document.description ? "" : "empty"}`}
+          onClick={() =>
+            onBeginEditing(groupId, document, "description")
+          }
+          title="Click to edit description"
+        >
+          {document.description || "Add description"}
+        </button>
+      ) : document.description ? (
+        <span>{document.description}</span>
+      ) : null}
+    </header>
+  );
+}

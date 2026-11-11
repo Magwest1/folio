@@ -1,0 +1,472 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { api, apiForBundle } from '../../../lib/api.ts'
+import { useAudioRecorder, type RecordingPhase } from './useAudioRecorder.ts'
+import type { SourceLevels, SourceSilence } from '../model/level-monitor.ts'
+import type { RecordingAssociation } from '../model/recording.ts'
+import { systemAudioSupported, type RecordingSource } from '../model/recording-source.ts'
+import { audioDuration } from '../model/audio-duration.ts'
+import { regenerateSummary, hasOpenLinkedDraft, type DraftWorkContext, type SessionDraft } from './draftWork.ts'
+import { mergeRecordingSpeakers, mergeTranscriptSegment, reassignSegmentSpeaker, renameRecordingSpeaker, splitTranscriptSegment, type ReassignOutcome } from './speakerReassign.ts'
+import { transcriptionAudioUrl } from '../model/audio-url.ts'
+import { plainTranscriptResult } from '../model/plain-transcript.ts'
+import { playbackStore } from '../model/playback-store.ts'
+import {
+  mergeTranscriptionDraft,
+  type TranscriptionDraftAdapter,
+  type TranscriptionPhase,
+  type TranscriptionProcessResponse,
+  type TranscriptionResult,
+  type SpeakerModelStatus,
+  type TranscriptionSession,
+  type TranscriptionStatus,
+} from '../model/types.ts'
+
+export type RecordingModel = {
+  phase: RecordingPhase
+  duration: string
+  error: string
+  saving: boolean
+  source: RecordingSource
+  /** True when the desktop shell can capture system audio, so the source choice is offered. */
+  systemAudioSupported: boolean
+  systemAudioBlocked: boolean
+  levels: SourceLevels
+  silent: SourceSilence
+}
+
+export type TranscriptionDockModel = {
+  phase: TranscriptionPhase
+  activeSession: TranscriptionSession | null
+  pending: TranscriptionSession[]
+  status: TranscriptionStatus | null
+  progress: string
+  error: string
+  deletingSessionId: string | null
+  recording: RecordingModel
+  /** Whether the recording has an open, independent draft. */
+  hasOpenDraftFor: (session: TranscriptionSession) => boolean
+  audioUrlFor: (session: TranscriptionSession) => string
+}
+
+export type TranscriptionDockActions = {
+  importFile: (file: File, association?: RecordingAssociation) => Promise<boolean>
+  startRecording: () => Promise<void>
+  setRecordingSource: (source: RecordingSource) => void
+  stopRecording: () => void
+  discardRecording: () => void
+  retryRecording: () => Promise<void>
+  installModel: () => void
+  installSpeakerModel: () => void
+  transcribe: (session: TranscriptionSession) => void
+  /** Re-runs transcription on a ready session and updates its saved recording result. */
+  retranscribe: (session: TranscriptionSession) => void
+  cancel: (session: TranscriptionSession) => void
+  /** Opens the transcript in a new draft; `speakers: false` writes plain paragraphs and leaves the draft unlinked from the session. */
+  openTranscript: (session: TranscriptionSession, options?: { speakers: boolean }) => void
+  regenerateSummary: (session: TranscriptionSession) => void
+  deleteSession: (session: TranscriptionSession) => Promise<void>
+  /** Loads the stored result (segments included) of a ready session for the player. */
+  loadResult: (session: TranscriptionSession) => Promise<TranscriptionResult | null>
+  reassignSpeaker: (session: TranscriptionSession, index: number, speaker: number) => Promise<ReassignOutcome>
+  /** Splits a sentence at a character offset; the rest goes to `speaker` (the same speaker when null). */
+  splitSegment: (session: TranscriptionSession, index: number, offset: number, speaker: number | null) => Promise<ReassignOutcome>
+  /** Merges a sentence into the previous one in the saved recording. */
+  mergeSegment: (session: TranscriptionSession, index: number) => Promise<ReassignOutcome>
+  mergeSpeakers: (session: TranscriptionSession, source: number, target: number) => Promise<ReassignOutcome>
+  /** Saves a speaker's display name on the recording result. */
+  renameSpeaker: (session: TranscriptionSession, speaker: number, name: string) => Promise<TranscriptionResult>
+}
+
+type Options = {
+  drafts: TranscriptionDraftAdapter
+  setMessage: (message: string) => void
+  sourceBundleId: string | null
+}
+
+type SessionResponse = { session: TranscriptionSession }
+type SessionListResponse = TranscriptionSession[]
+
+const SUPPORTED_AUDIO = /\.(aac|aiff|flac|m4a|mp3|wav)$/i
+const MAX_AUDIO_BYTES = 500 * 1024 * 1024
+
+function isSession(value: unknown): value is TranscriptionSession {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return typeof candidate.id === 'string' && typeof candidate.state === 'string'
+    && (candidate.draftId === null || typeof candidate.draftId === 'string')
+}
+
+function sessionList(value: unknown): TranscriptionSession[] {
+  return Array.isArray(value) ? value.filter(isSession) : []
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
+
+export function useTranscription({ drafts, setMessage, sourceBundleId }: Options) {
+  const [phase, setPhase] = useState<TranscriptionPhase>('idle')
+  const [activeSession, setActiveSession] = useState<TranscriptionSession | null>(null)
+  const [pending, setPending] = useState<TranscriptionSession[]>([])
+  const [status, setStatus] = useState<TranscriptionStatus | null>(null)
+  const [progress, setProgress] = useState('')
+  const [error, setError] = useState('')
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
+  const activeBundle = useRef(sourceBundleId)
+  const activeTranscriptionId = useRef<string | null>(null)
+  const bundleGeneration = useRef(0)
+  const refreshSequence = useRef(0)
+  const latestAppliedRefresh = useRef(0)
+  const busyRef = useRef(false)
+  const deletingRef = useRef<string | null>(null)
+  const deletedSessionIds = useRef(new Set<string>())
+  const sessionDrafts = useRef(new Map<string, SessionDraft>())
+  const draftsRef = useRef(drafts)
+  const retranscribingIds = useRef(new Set<string>())
+  const recorder = useAudioRecorder({
+    association: { sourceBundleId },
+    onImport: importFile,
+  })
+  if (activeSession && (activeSession.sourceBundleId ?? null) !== sourceBundleId) {
+    setActiveSession(null)
+    setProgress('')
+    setPhase('idle')
+    setError('')
+  }
+  const hasTranscribingSession = pending.some((session) => session.state === 'transcribing')
+  const transcriptionModelName = status?.modelName ?? (status?.modelId === 'whisperlarge' ? 'Whisper Large v3' : 'Whisper Large v3 Turbo')
+
+  useLayoutEffect(() => {
+    if (activeBundle.current !== sourceBundleId) {
+      activeBundle.current = sourceBundleId
+      bundleGeneration.current += 1
+      activeTranscriptionId.current = null
+    }
+  }, [sourceBundleId])
+  useLayoutEffect(() => { draftsRef.current = drafts }, [drafts])
+  const pendingRef = useRef(pending)
+  useLayoutEffect(() => { pendingRef.current = pending }, [pending])
+  useEffect(() => {
+    playbackStore.configure({
+      sourceFor: (sessionId) => {
+        const session = pendingRef.current.find((item) => item.id === sessionId)
+        return session ? transcriptionAudioUrl(session) : null
+      },
+      sessionForDraft: (draftId) => {
+        for (const [sessionId, draft] of sessionDrafts.current) if (draft.draftId === draftId) return sessionId
+        return null
+      },
+    })
+    return () => playbackStore.configure({})
+  }, [])
+
+  function draftFiled(oldId: string, _newId: string, bundleId: string) {
+    for (const [sessionId, draft] of sessionDrafts.current) {
+      if (draft.draftId === oldId && draft.bundleId === bundleId) sessionDrafts.current.delete(sessionId)
+    }
+  }
+
+  async function refresh() {
+    const sequence = ++refreshSequence.current
+    const bundle = activeBundle.current
+    const generation = bundleGeneration.current
+    try {
+      const [nextStatus, sessions] = await Promise.all([
+        api<TranscriptionStatus>('/api/transcriptions/status'),
+        api<SessionListResponse>('/api/transcriptions?pending=1'),
+      ])
+      if (sequence < latestAppliedRefresh.current || generation !== bundleGeneration.current || bundle !== activeBundle.current) return
+      latestAppliedRefresh.current = sequence
+      setStatus(nextStatus)
+      setPending(sessionList(sessions).filter((session) => !deletedSessionIds.current.has(session.id)
+        && (!session.sourceBundleId || session.sourceBundleId === activeBundle.current)))
+    } catch { /* the rest of the workspace remains usable if the local API is starting */ }
+  }
+
+  useEffect(() => {
+    const initial = window.setTimeout(() => void refresh(), 0)
+    const interval = window.setInterval(() => void refresh(), phase === 'downloading' || phase === 'transcribing' || hasTranscribingSession ? 1_000 : 5_000)
+    return () => { window.clearTimeout(initial); window.clearInterval(interval) }
+  }, [hasTranscribingSession, phase, sourceBundleId])
+
+  async function importFile(file: File, association?: RecordingAssociation): Promise<boolean> {
+    if (busyRef.current) return false
+    busyRef.current = true
+    setError('')
+    const importBundle = association ? association.sourceBundleId : sourceBundleId
+    if (!SUPPORTED_AUDIO.test(file.name)) {
+      setError('Choose an AAC, AIFF, FLAC, M4A, MP3, or WAV audio file.')
+      setPhase('error')
+      busyRef.current = false
+      return false
+    }
+    if (file.size <= 0 || file.size > MAX_AUDIO_BYTES) {
+      setError('Audio files must be greater than 0 bytes and 500 MB or smaller.')
+      setPhase('error')
+      busyRef.current = false
+      return false
+    }
+    setPhase('importing')
+    setProgress(`Saving ${file.name} on this device…`)
+    try {
+      const durationMs = await audioDuration(file)
+      const created = await apiForBundle<SessionResponse>(importBundle, '/api/transcriptions', {
+        method: 'POST',
+        body: JSON.stringify({ fileName: file.name, durationMs, sourceBundleId: importBundle }),
+      })
+      await apiForBundle(importBundle, `/api/transcriptions/${encodeURIComponent(created.session.id)}/audio`, {
+        method: 'PUT',
+        headers: { 'content-type': file.type || 'application/octet-stream' },
+        body: file,
+      })
+      if (activeBundle.current !== importBundle) {
+        setMessage(`Saved ${file.name}. Switch back to the source workspace to transcribe it.`)
+      } else {
+        setMessage(`Saved ${file.name} locally. Download ${transcriptionModelName} if needed, then transcribe it.`)
+      }
+      await refresh()
+      setPhase('idle')
+      setProgress('')
+      return true
+    } catch (uploadError) {
+      setError(errorMessage(uploadError, 'Could not save the audio file.'))
+      setPhase('error')
+      setProgress('')
+      return false
+    } finally { busyRef.current = false }
+  }
+
+  async function installModel() {
+    if (busyRef.current) return
+    busyRef.current = true
+    setError('')
+    setPhase('downloading')
+    setProgress(`Downloading ${transcriptionModelName} weights and tokenizer files…`)
+    try {
+      await api<TranscriptionStatus>('/api/transcriptions/model/install', { method: 'POST' })
+      setMessage(`${transcriptionModelName} is ready for local transcription.`)
+      await refresh()
+      setPhase('idle')
+      setProgress('')
+    } catch (downloadError) {
+      setError(errorMessage(downloadError, `Could not download ${transcriptionModelName}.`))
+      setPhase('error')
+      setProgress('')
+    } finally { busyRef.current = false }
+  }
+
+  async function installSpeakerModel() {
+    if (busyRef.current) return
+    busyRef.current = true
+    setError('')
+    setPhase('downloading')
+    setProgress('Downloading the Sortformer speaker model…')
+    try {
+      await api<SpeakerModelStatus>('/api/transcriptions/speakers/install', { method: 'POST' })
+      setMessage('Speaker labels are ready for local transcription.')
+      await refresh()
+      setPhase('idle')
+      setProgress('')
+    } catch (downloadError) {
+      setError(errorMessage(downloadError, 'Could not download the Sortformer speaker model.'))
+      setPhase('error')
+      setProgress('')
+      await refresh()
+    } finally { busyRef.current = false }
+  }
+
+  function openTranscriptDraft(session: TranscriptionSession, result: TranscriptionProcessResponse['result'], transform?: (content: string) => string) {
+    const bundleId = session.sourceBundleId ?? null
+    if (activeBundle.current !== bundleId) {
+      setMessage('Transcription finished. Switch back to the source workspace to open its Markdown note.')
+      return null
+    }
+    const content = mergeTranscriptionDraft(session, result)
+    const draftId = draftsRef.current.createDraft(transform ? transform(content) : content)
+    sessionDrafts.current.set(session.id, { draftId, bundleId })
+    setMessage(result.speakerWarning ? `Transcript opened in a new editable draft. ${result.speakerWarning}` : 'Transcript opened in a new editable draft.')
+    return draftId
+  }
+
+  async function transcribe(session: TranscriptionSession, retranscribe = false) {
+    if (busyRef.current || deletingRef.current === session.id) return
+    const taskBundle = session.sourceBundleId ?? null
+    const taskGeneration = bundleGeneration.current
+    busyRef.current = true
+    activeTranscriptionId.current = session.id
+    if (retranscribe) retranscribingIds.current.add(session.id)
+    setError('')
+    setActiveSession(session)
+    setPending((sessions) => sessions.map((item) => item.id === session.id
+      ? { ...item, state: 'transcribing', progressPercent: 0 } : item))
+    setPhase('transcribing')
+    setProgress(`Transcribing audio with ${transcriptionModelName} locally…`)
+    try {
+      const response = await apiForBundle<TranscriptionProcessResponse>(taskBundle, `/api/transcriptions/${encodeURIComponent(session.id)}/process`, {
+        method: 'POST',
+        ...(retranscribe ? { body: JSON.stringify({ retranscribe: true }) } : {}),
+      })
+      if (activeBundle.current === taskBundle && bundleGeneration.current === taskGeneration
+        && activeTranscriptionId.current === session.id) {
+        const readySession = { ...response.session, sourceBundleId: taskBundle }
+        if (retranscribe) setMessage(response.result.speakerWarning
+          ? `Re-transcription saved to the recording. ${response.result.speakerWarning}` : 'Re-transcription saved to the recording.')
+        else openTranscriptDraft(readySession, response.result)
+        setPhase('idle')
+        setProgress('')
+        setActiveSession(null)
+      }
+      await refresh()
+    } catch (transcribeError) {
+      if (activeBundle.current === taskBundle && bundleGeneration.current === taskGeneration
+        && activeTranscriptionId.current === session.id) {
+        const failure = errorMessage(transcribeError, 'Could not transcribe the audio.')
+        setError(retranscribe ? `${failure} Your previous transcript was kept.` : failure)
+        setPhase('error')
+        setProgress('')
+      }
+      await refresh()
+    } finally {
+      busyRef.current = false
+      retranscribingIds.current.delete(session.id)
+      if (activeTranscriptionId.current === session.id) activeTranscriptionId.current = null
+    }
+  }
+
+  async function cancel(session: TranscriptionSession) {
+    if (phase === 'summarizing' && activeSession?.id === session.id) {
+      setPhase('cancelling-summary')
+      setProgress('Waiting for the current local model request to finish; its summary will be discarded…')
+      try {
+        const response = await apiForBundle<{ cancelled: boolean }>(session.sourceBundleId ?? null, `/api/transcriptions/${encodeURIComponent(session.id)}/summarize/cancel`, { method: 'POST' })
+        setMessage(response.cancelled
+          ? 'Summary cancelled. The saved recording was kept.'
+          : 'Summary generation had already finished.')
+      } catch (cancelError) {
+        setError(errorMessage(cancelError, 'Could not cancel summary generation.'))
+        setPhase('summarizing')
+        setProgress('Summarizing the saved recording with the selected local text model…')
+      }
+      await refresh()
+      return
+    }
+    try {
+      await apiForBundle(session.sourceBundleId ?? null, `/api/transcriptions/${encodeURIComponent(session.id)}/cancel`, { method: 'POST' })
+      if (activeBundle.current === (session.sourceBundleId ?? null)) {
+        setMessage(retranscribingIds.current.has(session.id)
+          ? 'Re-transcription cancelled. Your previous transcript was kept.'
+          : 'Transcription cancelled. The audio file is saved and can be retried.')
+      }
+    } catch (cancelError) { if (activeBundle.current === (session.sourceBundleId ?? null)) setError(errorMessage(cancelError, 'Could not cancel transcription.')) }
+    await refresh()
+  }
+
+  async function openTranscript(session: TranscriptionSession, withSpeakers: boolean) {
+    if (deletingRef.current === session.id) return
+    const taskBundle = session.sourceBundleId ?? null
+    const taskGeneration = bundleGeneration.current
+    setError('')
+    try {
+      const response = await apiForBundle<TranscriptionProcessResponse>(taskBundle, `/api/transcriptions/${encodeURIComponent(session.id)}`)
+      if (activeBundle.current !== taskBundle || bundleGeneration.current !== taskGeneration) return
+      if (!response.result) throw new Error('No transcript has been saved for this audio yet. Transcribe it first.')
+      if (withSpeakers) openTranscriptDraft({ ...session, sourceBundleId: taskBundle }, response.result)
+      else {
+        // Not registered in sessionDrafts: this explicit plain-text copy is independent of the recording.
+        draftsRef.current.createDraft(mergeTranscriptionDraft(session, plainTranscriptResult(response.result)))
+        setMessage('Transcript opened as plain text in a new editable draft.')
+      }
+    } catch (openError) {
+      if (activeBundle.current === taskBundle && bundleGeneration.current === taskGeneration) {
+        setError(errorMessage(openError, 'Could not open the transcript note.'))
+        setPhase('error')
+      }
+    }
+  }
+
+  async function deleteSession(session: TranscriptionSession) {
+    if (deletingRef.current || (busyRef.current && activeSession?.id === session.id)
+      || recorder.phase !== 'idle' || session.state === 'transcribing') return
+    deletingRef.current = session.id
+    setDeletingSessionId(session.id)
+    setError('')
+    try {
+      await apiForBundle<{ deleted: boolean }>(session.sourceBundleId ?? null,
+        `/api/transcriptions/${encodeURIComponent(session.id)}`, { method: 'DELETE' })
+      sessionDrafts.current.delete(session.id)
+      playbackStore.unload(session.id)
+      deletedSessionIds.current.add(session.id)
+      setPending((sessions) => sessions.filter((item) => item.id !== session.id))
+      if (activeSession?.id === session.id) {
+        setActiveSession(null)
+        setPhase('idle')
+        setProgress('')
+      }
+      if (activeBundle.current === (session.sourceBundleId ?? null)) {
+        setMessage('Deleted local audio, transcript, and summary. Any Markdown note you opened or saved was kept.')
+      }
+    } catch (deleteError) {
+      if (activeBundle.current === (session.sourceBundleId ?? null)) setError(errorMessage(deleteError, 'Could not delete this transcription.'))
+      await refresh()
+    } finally {
+      deletingRef.current = null
+      setDeletingSessionId(null)
+    }
+  }
+
+  const draftWork: DraftWorkContext = {
+    busyRef, deletingRef, activeBundle, bundleGeneration, sessionDrafts, draftsRef,
+    setError, setMessage, setPhase, setProgress, setActiveSession, refresh,
+  }
+
+  const model: TranscriptionDockModel = {
+    phase,
+    activeSession,
+    pending: pending.filter((session) => !session.sourceBundleId || session.sourceBundleId === sourceBundleId),
+    status,
+    progress: phase === 'transcribing'
+      ? `${pending.find((session) => session.id === activeSession?.id)?.progressPercent ?? 0}%`
+      : progress,
+    error,
+    deletingSessionId,
+    recording: {
+      phase: recorder.phase,
+      duration: recorder.duration,
+      error: recorder.error,
+      saving: recorder.saving,
+      source: recorder.source,
+      systemAudioSupported: systemAudioSupported(),
+      systemAudioBlocked: recorder.systemAudioBlocked,
+      levels: recorder.levels,
+      silent: recorder.silent,
+    },
+    hasOpenDraftFor: (session) => hasOpenLinkedDraft(draftWork, session),
+    audioUrlFor: transcriptionAudioUrl,
+  }
+  const actions: TranscriptionDockActions = {
+    importFile: (file, association) => importFile(file, association),
+    startRecording: recorder.start,
+    setRecordingSource: recorder.setSource,
+    stopRecording: recorder.stop,
+    discardRecording: recorder.discard,
+    retryRecording: recorder.retry,
+    installModel: () => void installModel(),
+    installSpeakerModel: () => void installSpeakerModel(),
+    transcribe: (session) => void transcribe(session),
+    retranscribe: (session) => void transcribe(session, true),
+    cancel: (session) => void cancel(session),
+    openTranscript: (session, options) => void openTranscript(session, options?.speakers !== false),
+    regenerateSummary: (session) => void regenerateSummary(draftWork, session),
+    deleteSession,
+    loadResult: async (session) => {
+      const response = await apiForBundle<TranscriptionProcessResponse>(session.sourceBundleId ?? null, `/api/transcriptions/${encodeURIComponent(session.id)}`)
+      return response.result ?? null
+    },
+    reassignSpeaker: (session, index, speaker) => reassignSegmentSpeaker(session, index, speaker),
+    splitSegment: (session, index, offset, speaker) => splitTranscriptSegment(session, index, offset, speaker),
+    mergeSegment: (session, index) => mergeTranscriptSegment(session, index),
+    mergeSpeakers: (session, source, target) => mergeRecordingSpeakers(session, source, target),
+    renameSpeaker: (session, speaker, name) => renameRecordingSpeaker(session, speaker, name),
+  }
+  return { model, actions, draftFiled }
+}

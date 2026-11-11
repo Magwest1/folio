@@ -1,0 +1,180 @@
+import type { SidebarMode, TabGroup } from "../../../domain/types.ts";
+import { readStorageItem, writeStorageItem } from "../../../lib/storage.ts";
+
+export const WORKSPACE_STATE_STORAGE_KEY = "folio:workspace-state";
+export const WORKSPACE_STATE_VERSION = 1;
+
+export type WorkspaceSessionState = {
+  version: 1;
+  groups: TabGroup[];
+  activeGroupId: string;
+  sidebarMode: SidebarMode;
+  explorerScrollTop: number;
+  splitPosition?: number;
+  documentScrollTops: Record<string, number>;
+  documentSelections?: Record<string, { from: number; to: number }>;
+};
+
+const sidebarModes = new Set<SidebarMode>(["explore", "search", "ask"]);
+const workspaceGroupIds = new Set(["primary", "secondary"]);
+export const MAX_TABS_PER_GROUP = 100;
+export const MAX_DOCUMENT_SCROLL_ENTRIES = 200;
+export const MAX_DOCUMENT_SELECTION_ENTRIES = 200;
+
+function validId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 500;
+}
+
+function parseGroup(value: unknown, seenTabs: Set<string>): TabGroup | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.id !== "string" ||
+    !workspaceGroupIds.has(candidate.id) ||
+    !Array.isArray(candidate.tabs)
+  )
+    return null;
+  const tabs = Array.from(
+    new Set(
+      candidate.tabs
+        .filter((tab): tab is string => validId(tab) && !seenTabs.has(tab))
+        .slice(0, MAX_TABS_PER_GROUP),
+    ),
+  );
+  tabs.forEach((tab) => seenTabs.add(tab));
+  const activeId = validId(candidate.activeId) && tabs.includes(candidate.activeId)
+    ? candidate.activeId
+    : null;
+  const previewId = validId(candidate.previewId) && tabs.includes(candidate.previewId)
+    ? candidate.previewId
+    : null;
+  return { id: candidate.id, tabs, activeId, previewId };
+}
+
+export function parseWorkspaceSessionState(value: unknown): WorkspaceSessionState | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.version !== WORKSPACE_STATE_VERSION || !Array.isArray(candidate.groups)) return null;
+  const seenTabs = new Set<string>();
+  const seenGroupIds = new Set<string>();
+  const groups: TabGroup[] = [];
+  for (const candidateGroup of candidate.groups) {
+    if (groups.length >= 2 || !candidateGroup || typeof candidateGroup !== "object")
+      continue;
+    const groupId = (candidateGroup as Record<string, unknown>).id;
+    if (typeof groupId !== "string" || seenGroupIds.has(groupId)) continue;
+    const group = parseGroup(candidateGroup, seenTabs);
+    if (!group) continue;
+    seenGroupIds.add(group.id);
+    groups.push(group);
+  }
+  if (!groups.length) return null;
+  const activeGroupId = validId(candidate.activeGroupId) && groups.some((group) => group.id === candidate.activeGroupId)
+    ? candidate.activeGroupId
+    : groups[0].id;
+  const sidebarMode = sidebarModes.has(candidate.sidebarMode as SidebarMode)
+    ? (candidate.sidebarMode as SidebarMode)
+    : "explore";
+  const explorerScrollTop = typeof candidate.explorerScrollTop === "number" && Number.isFinite(candidate.explorerScrollTop) && candidate.explorerScrollTop >= 0
+    ? candidate.explorerScrollTop
+    : 0;
+  const documentScrollTops: Record<string, number> = {};
+  if (candidate.documentScrollTops && typeof candidate.documentScrollTops === "object") {
+    for (const [id, top] of Object.entries(candidate.documentScrollTops).slice(-MAX_DOCUMENT_SCROLL_ENTRIES)) {
+      if (validId(id) && typeof top === "number" && Number.isFinite(top) && top >= 0)
+        documentScrollTops[id] = top;
+    }
+  }
+  const documentSelections: Record<string, { from: number; to: number }> = {};
+  if (candidate.documentSelections && typeof candidate.documentSelections === "object") {
+    for (const [id, selection] of Object.entries(candidate.documentSelections).slice(-MAX_DOCUMENT_SELECTION_ENTRIES)) {
+      if (!validId(id) || !selection || typeof selection !== "object") continue;
+      const candidateSelection = selection as Record<string, unknown>;
+      const from = candidateSelection.from;
+      const to = candidateSelection.to;
+      if (
+        typeof from === "number" && Number.isInteger(from) && from >= 0 &&
+        typeof to === "number" && Number.isInteger(to) && to >= from
+      ) documentSelections[id] = { from, to };
+    }
+  }
+  const splitPosition = typeof candidate.splitPosition === "number" && Number.isFinite(candidate.splitPosition) && candidate.splitPosition >= 0 && candidate.splitPosition <= 100
+    ? candidate.splitPosition
+    : undefined;
+  return {
+    version: 1,
+    groups,
+    activeGroupId,
+    sidebarMode,
+    explorerScrollTop,
+    splitPosition,
+    documentScrollTops,
+    ...(candidate.documentSelections && typeof candidate.documentSelections === "object"
+      ? { documentSelections }
+      : {}),
+  };
+}
+
+export function pruneDocumentScrollTops(
+  entries: Record<string, number>,
+  validIds?: ReadonlySet<string>,
+): Record<string, number> {
+  const candidates = Object.entries(entries).filter(
+    ([id, top]) => validId(id) && Number.isFinite(top) && top >= 0 && (!validIds || validIds.has(id)),
+  );
+  return Object.fromEntries(candidates.slice(-MAX_DOCUMENT_SCROLL_ENTRIES));
+}
+
+export function pruneDocumentSelections(
+  entries: Record<string, { from: number; to: number }>,
+  validIds?: ReadonlySet<string>,
+): Record<string, { from: number; to: number }> {
+  const candidates = Object.entries(entries).filter(
+    ([id, selection]) =>
+      validId(id) &&
+      Number.isInteger(selection.from) &&
+      Number.isInteger(selection.to) &&
+      selection.from >= 0 &&
+      selection.to >= selection.from &&
+      (!validIds || validIds.has(id)),
+  );
+  return Object.fromEntries(candidates.slice(-MAX_DOCUMENT_SELECTION_ENTRIES));
+}
+
+export function reconcileWorkspaceSessionState(
+  state: WorkspaceSessionState,
+  validIds: ReadonlySet<string>,
+): Pick<WorkspaceSessionState, "groups" | "activeGroupId"> {
+  const groups = state.groups.map((group) => {
+    const tabs = group.tabs.filter((id) => validIds.has(id));
+    return {
+      ...group,
+      tabs,
+      activeId: group.activeId && tabs.includes(group.activeId) ? group.activeId : tabs[0] ?? null,
+      previewId: group.previewId && tabs.includes(group.previewId) ? group.previewId : null,
+    };
+  });
+  const nextGroups = groups.length
+    ? groups
+    : [{ id: "primary", tabs: [], activeId: null, previewId: null }];
+  const activeGroupId = nextGroups.some((group) => group.id === state.activeGroupId)
+    ? state.activeGroupId
+    : nextGroups[0].id;
+  return { groups: nextGroups, activeGroupId };
+}
+
+export function loadWorkspaceSessionState(bundleId = "legacy-bundle"): WorkspaceSessionState | null {
+  try {
+    const scopedKey = `${WORKSPACE_STATE_STORAGE_KEY}:v2:${bundleId}`;
+    const scoped = readStorageItem(scopedKey);
+    const stored = scoped
+      || (bundleId === "legacy-bundle" ? readStorageItem(WORKSPACE_STATE_STORAGE_KEY) : null);
+    if (!stored) return null;
+    const parsed = parseWorkspaceSessionState(JSON.parse(stored));
+    if (parsed && !scoped && bundleId === "legacy-bundle")
+      writeStorageItem(scopedKey, JSON.stringify(parsed));
+    return parsed;
+  } catch {
+    return null;
+  }
+}
