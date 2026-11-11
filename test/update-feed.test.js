@@ -3,8 +3,8 @@ import test from 'node:test'
 import { Provider } from 'electron-updater'
 import { configureStableGithubReleaseFeed } from '../electron/update-feed.js'
 
-const repositoryUrl = 'https://github.com/MagnusOlstad/folio.git'
-const zipUrl = 'https://api.github.com/repos/MagnusOlstad/folio/releases/assets/726603504'
+const repositoryUrl = 'https://github.com/magwest1/folio.git'
+const zipUrl = 'https://api.github.com/repos/magwest1/folio/releases/assets/726603504'
 const zipName = 'FolioNotes-0.9.0-arm64.zip'
 const sha512 = 'a'.repeat(88)
 
@@ -69,7 +69,7 @@ test('configures a public custom provider from the GitHub stable-release API', a
   const updateInfo = await provider.getLatestVersion()
   const files = provider.resolveFiles(updateInfo)
 
-  assert.equal(calls[0].url, 'https://api.github.com/repos/MagnusOlstad/folio/releases/latest')
+  assert.equal(calls[0].url, 'https://api.github.com/repos/magwest1/folio/releases/latest')
   assert.equal(calls[0].init.headers.Accept, 'application/vnd.github+json')
   assert.equal(calls[0].init.headers['X-GitHub-Api-Version'], '2022-11-28')
   assert.ok(calls[0].init.signal instanceof AbortSignal)
@@ -79,7 +79,7 @@ test('configures a public custom provider from the GitHub stable-release API', a
   assert.equal(calls[1].request.headers.Accept, 'application/octet-stream')
   assert.equal(calls[1].request.protocol, 'https:')
   assert.equal(calls[1].request.hostname, 'api.github.com')
-  assert.equal(calls[1].request.path, '/repos/MagnusOlstad/folio/releases/assets/726603503')
+  assert.equal(calls[1].request.path, '/repos/magwest1/folio/releases/assets/726603503')
   assert.equal(updateInfo.version, '0.9.0')
   assert.equal(provider.isUseMultipleRangeRequest, false)
   assert.deepEqual(provider.fileExtraDownloadHeaders, { Accept: 'application/octet-stream' })
@@ -161,7 +161,7 @@ test('rejects update metadata whose tag, SHA512, or release asset does not match
 test('rejects non-GitHub updater repository configuration', async () => {
   let requested = false
   await assert.rejects(configureStableGithubReleaseFeed({
-    repositoryUrl: 'https://example.com/MagnusOlstad/folio',
+    repositoryUrl: 'https://example.com/magwest1/folio',
     Provider,
     updater: { setFeedURL() {} },
     fetchImpl: async () => { requested = true; return createResponse({}) },

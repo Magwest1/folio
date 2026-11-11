@@ -23,7 +23,7 @@ test('macOS afterPack writes update settings for any target before signing', asy
       appOutDir: appPath,
       targets: [{ name: 'dir' }],
       packager: {
-        config: { publish: { provider: 'github', owner: 'MagnusOlstad', repo: 'folio' } },
+        config: { publish: { provider: 'github', owner: 'magwest1', repo: 'folio' } },
         appInfo: { name: 'okf-notetaker' },
         getResourcesDir: (outputPath) => path.join(outputPath, 'Contents', 'Resources'),
       },
@@ -31,9 +31,9 @@ test('macOS afterPack writes update settings for any target before signing', asy
 
     const updateConfig = parse(await readFile(path.join(resourcesPath, 'app-update.yml'), 'utf8'));
     assert.deepEqual(updateConfig, expectedConfig({
-      provider: 'github', owner: 'MagnusOlstad', repo: 'folio',
+      provider: 'github', owner: 'magwest1', repo: 'folio',
     }, 'okf-notetaker'));
-    await verifyMacUpdateConfig(appPath, { provider: 'github', owner: 'MagnusOlstad', repo: 'folio' }, 'okf-notetaker');
+    await verifyMacUpdateConfig(appPath, { provider: 'github', owner: 'magwest1', repo: 'folio' }, 'okf-notetaker');
   } finally {
     await rm(appPath, { recursive: true, force: true });
   }
@@ -42,7 +42,7 @@ test('macOS afterPack writes update settings for any target before signing', asy
 test('update artifact validation rejects missing or mismatched provider settings', async () => {
   const appPath = await createAppPath();
   const configPath = path.join(appPath, 'Contents', 'Resources', 'app-update.yml');
-  const publish = { provider: 'github', owner: 'MagnusOlstad', repo: 'folio' };
+  const publish = { provider: 'github', owner: 'magwest1', repo: 'folio' };
 
   try {
     await assert.rejects(verifyMacUpdateConfig(appPath, publish, 'okf-notetaker'), /app-update\.yml/);
@@ -50,7 +50,7 @@ test('update artifact validation rejects missing or mismatched provider settings
     await writeFile(configPath, 'provider: generic\nurl: https://example.com\nupdaterCacheDirName: wrong\n');
     await assert.rejects(verifyMacUpdateConfig(appPath, publish, 'okf-notetaker'), /provider to github/);
 
-    await writeFile(configPath, 'provider: github\nowner: MagnusOlstad\nrepo: folio\nupdaterCacheDirName: wrong\n');
+    await writeFile(configPath, 'provider: github\nowner: magwest1\nrepo: folio\nupdaterCacheDirName: wrong\n');
     await assert.rejects(verifyMacUpdateConfig(appPath, publish, 'okf-notetaker'), /updaterCacheDirName to okf-notetaker-updater/);
   } finally {
     await rm(appPath, { recursive: true, force: true });

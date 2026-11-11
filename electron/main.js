@@ -263,7 +263,7 @@ function setApplicationMenu() {
           label: 'FolioNotes on GitHub',
           click: () => {
             shell
-              .openExternal('https://github.com/MagnusOlstad/folio')
+              .openExternal('https://github.com/magwest1/folio')
               .catch((error) => console.error('Failed to open FolioNotes GitHub page:', error))
           },
         },

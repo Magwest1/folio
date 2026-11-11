@@ -17,7 +17,7 @@ test('update arrival and download progress survive both panes being collapsed', 
     contentType: 'application/json',
     body: JSON.stringify({
       version: '0.6.0',
-      repo: 'MagnusOlstad/folio',
+      repo: 'magwest1/folio',
       latest: null,
       updateAvailable: false,
     }),
@@ -81,9 +81,9 @@ test('the collapsed pane signals an API release update', async ({ page }) => {
     contentType: 'application/json',
     body: JSON.stringify({
       version: '0.6.0',
-      repo: 'MagnusOlstad/folio',
+      repo: 'magwest1/folio',
       latest: '0.7.0',
-      latestUrl: 'https://github.com/MagnusOlstad/folio/releases/tag/v0.7.0',
+      latestUrl: 'https://github.com/magwest1/folio/releases/tag/v0.7.0',
       updateAvailable: true,
     }),
   }))

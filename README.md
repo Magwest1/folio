@@ -198,7 +198,7 @@ Two settings affect the check:
 
 - The repository must be public, or `GITHUB_TOKEN` must be set, for the API to return a
   release. Otherwise `checkError` is reported and no badge appears.
-- `FOLIO_UPDATE_REPO` overrides the `owner/repo` that is polled (default `MagnusOlstad/folio`).
+- `FOLIO_UPDATE_REPO` overrides the `owner/repo` that is polled (default `magwest1/folio`).
 
 ## Production-style local run
 
