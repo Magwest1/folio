@@ -144,7 +144,6 @@ test('compareToBaseline reports regressions and improvements beyond the toleranc
 })
 
 test('unfinished stages fail with a clear message', async () => {
-  await assert.rejects(stages.model.load(), /not implemented yet \(see #17\)/)
   await assert.rejects(stages.completion.load(), /not implemented yet \(see #21\)/)
 })
 

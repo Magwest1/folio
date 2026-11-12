@@ -1,0 +1,418 @@
+{
+  "stage": "model",
+  "date": "2026-11-12T14:15:56.390Z",
+  "modelId": "gemma4",
+  "promptVersion": "extract-v1",
+  "metrics": {
+    "cases": 81,
+    "expected": 69,
+    "predictions": 68,
+    "overall": {
+      "tp": 68,
+      "fp": 0,
+      "fn": 1,
+      "precision": 1,
+      "recall": 0.9855,
+      "f1": 0.9927
+    },
+    "byLanguage": {
+      "en": {
+        "cases": 37,
+        "tp": 31,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1,
+        "recall": 0.9688,
+        "f1": 0.9841
+      },
+      "mixed": {
+        "cases": 5,
+        "tp": 5,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "no": {
+        "cases": 39,
+        "tp": 32,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      }
+    },
+    "bySource": {
+      "capture": {
+        "cases": 18,
+        "tp": 23,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "note": {
+        "cases": 57,
+        "tp": 37,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "transcript": {
+        "cases": 6,
+        "tp": 8,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1,
+        "recall": 0.8889,
+        "f1": 0.9412
+      }
+    },
+    "byTag": {
+      "buried": {
+        "cases": 2,
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "capture": {
+        "cases": 5,
+        "tp": 5,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "checkbox": {
+        "cases": 6,
+        "tp": 8,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "code": {
+        "cases": 2,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "precision": null,
+        "recall": null,
+        "f1": null
+      },
+      "completion": {
+        "cases": 8,
+        "tp": 6,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "deadline": {
+        "cases": 26,
+        "tp": 34,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "dst": {
+        "cases": 2,
+        "tp": 4,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "event": {
+        "cases": 7,
+        "tp": 12,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "follow-up": {
+        "cases": 3,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "history-date": {
+        "cases": 3,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "precision": null,
+        "recall": null,
+        "f1": null
+      },
+      "hypothetical": {
+        "cases": 6,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "precision": null,
+        "recall": null,
+        "f1": null
+      },
+      "long": {
+        "cases": 4,
+        "tp": 4,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "meeting": {
+        "cases": 5,
+        "tp": 6,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "mixed": {
+        "cases": 5,
+        "tp": 5,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "month-boundary": {
+        "cases": 5,
+        "tp": 9,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "negation": {
+        "cases": 2,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "precision": null,
+        "recall": null,
+        "f1": null
+      },
+      "negative": {
+        "cases": 34,
+        "tp": 4,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "no-owner": {
+        "cases": 2,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "no-speakers": {
+        "cases": 4,
+        "tp": 5,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1,
+        "recall": 0.8333,
+        "f1": 0.9091
+      },
+      "other-person": {
+        "cases": 7,
+        "tp": 7,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "past-tense": {
+        "cases": 4,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "precision": null,
+        "recall": null,
+        "f1": null
+      },
+      "question": {
+        "cases": 2,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "precision": null,
+        "recall": null,
+        "f1": null
+      },
+      "quote": {
+        "cases": 4,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "precision": null,
+        "recall": null,
+        "f1": null
+      },
+      "reference-imperative": {
+        "cases": 6,
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "precision": null,
+        "recall": null,
+        "f1": null
+      },
+      "speakers": {
+        "cases": 2,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "time-of-day": {
+        "cases": 4,
+        "tp": 4,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "todo-marker": {
+        "cases": 3,
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "transcript": {
+        "cases": 6,
+        "tp": 8,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1,
+        "recall": 0.8889,
+        "f1": 0.9412
+      },
+      "waiting": {
+        "cases": 6,
+        "tp": 10,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "week-window": {
+        "cases": 4,
+        "tp": 5,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "year-boundary": {
+        "cases": 3,
+        "tp": 6,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      }
+    },
+    "fieldAccuracy": {
+      "kind": {
+        "correct": 68,
+        "total": 68,
+        "accuracy": 1
+      },
+      "person": {
+        "correct": 68,
+        "total": 68,
+        "accuracy": 1
+      },
+      "due": {
+        "correct": 68,
+        "total": 68,
+        "accuracy": 1
+      },
+      "explicit": {
+        "correct": 67,
+        "total": 68,
+        "accuracy": 0.9853
+      }
+    },
+    "completions": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 16,
+      "precision": null,
+      "recall": 0,
+      "f1": 0
+    },
+    "explicitPrecision": {
+      "predicted": 27,
+      "correct": 27,
+      "precision": 1
+    },
+    "routing": {
+      "autoPrecision": 1,
+      "autoRecall": 0.9643,
+      "auto": {
+        "predicted": 27,
+        "correct": 27,
+        "expected": 28,
+        "found": 27
+      },
+      "suggestionPrecision": 1,
+      "suggestionRecall": 0.9756,
+      "suggested": {
+        "predicted": 41,
+        "correct": 41,
+        "expected": 41,
+        "found": 40
+      },
+      "modelCallsPerCase": 0.8519,
+      "extraCallsPerCase": 0.0741,
+      "meanLatencyMs": 5224.0988,
+      "degraded": 0,
+      "dropReasons": {
+        "low-confidence": 1
+      }
+    }
+  }
+}

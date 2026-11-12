@@ -21,6 +21,7 @@ import { createObsidianImportService } from './imports/obsidian.js'
 import { createHistoryService } from './history/service.js'
 import { createTranslationService } from './translation/service.js'
 import { createActionStore } from './actions/store.js'
+import { createActionService } from './actions/service.js'
 import { registerRoutes as registerMlxRoutes } from './routes/mlx.js'
 import { registerRoutes as registerSystemRoutes } from './routes/system.js'
 import { registerRoutes as registerFileRoutes } from './routes/files.js'
@@ -56,6 +57,7 @@ export function createRuntime(env = process.env, sharedMlxService = null) {
   Object.assign(runtime, { history: createHistoryService(runtime) })
   runtime.translation = createTranslationService(runtime)
   runtime.actionStore = createActionStore({ filePath: path.join(runtime.bundleRoot, '.folio', 'actions.json') })
+  runtime.actions = createActionService(runtime)
   return runtime
 }
 
@@ -88,6 +90,7 @@ export async function createApp(runtime = createRuntime()) {
     ])
     await runtime.reindexBundle()
     runtime.translation.startBackfill()
+    runtime.actions.startBackfill()
     manager.trackBackground(
       runtime.history.reconcile('Baseline'),
       'Could not initialize note history.',
