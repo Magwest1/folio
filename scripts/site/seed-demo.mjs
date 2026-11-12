@@ -4,6 +4,7 @@ import path from 'node:path'
 import { prepareDemoDirs, launch, api, workDir } from './lib.mjs'
 import { notes } from './demo/notes.mjs'
 import { renderCard } from './demo/make-ocr-image.mjs'
+import { renderSketch } from './demo/make-sketch-image.mjs'
 
 prepareDemoDirs({ fresh: true })
 const { app, base } = await launch()
@@ -15,8 +16,14 @@ try {
   const upload = await fetch(base + '/api/assets', { method: 'POST', headers: { 'content-type': 'image/png', 'x-folio-filename': 'cardamom-buns-recipe-card.png' }, body: fs.readFileSync(cardPng) })
   const { path: cardAsset } = await upload.json()
   console.log('card asset', cardAsset)
+  // Same for the generated whiteboard photo used by the image description screenshots.
+  const sketchPng = path.join(workDir, 'lumen-checklist-sketch.png')
+  await renderSketch(sketchPng)
+  const sketchUpload = await fetch(base + '/api/assets', { method: 'POST', headers: { 'content-type': 'image/png', 'x-folio-filename': 'lumen-checklist-sketch.png' }, body: fs.readFileSync(sketchPng) })
+  const { path: sketchAsset } = await sketchUpload.json()
+  console.log('sketch asset', sketchAsset)
   for (const n of notes) {
-    const content = n.content.replaceAll('__CARD_ASSET__', cardAsset)
+    const content = n.content.replaceAll('__CARD_ASSET__', cardAsset).replaceAll('__SKETCH_ASSET__', sketchAsset)
     const t = Date.now()
     const res = await api(base, 'POST', '/api/notes', { content, timeZone: 'Europe/Oslo' })
     if (res.filing?.id && res.filing.mode !== 'append') {

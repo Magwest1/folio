@@ -1,15 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-  <rect width="1200" height="630" fill="#161816"/>
-  <rect x="0" y="0" width="1200" height="630" fill="url(#g)"/>
-  <defs><radialGradient id="g" cx="0.2" cy="0" r="1"><stop offset="0" stop-color="#b7d892" stop-opacity="0.16"/><stop offset="1" stop-color="#b7d892" stop-opacity="0"/></radialGradient></defs>
-  <g transform="translate(90 150) scale(0.34)">
-    <rect width="1024" height="1024" rx="220" fill="#20231f"/>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- Editable source for og-image.png (rendered via scripts/site/render-og-image.mjs). Keep layout in sync. -->
+  <defs>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#14171c" fill-opacity=".14"/></pattern>
+    <linearGradient id="fade" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".4" stop-color="#fff"/></linearGradient>
+    <mask id="m"><rect x="560" width="640" height="630" fill="url(#fade)"/></mask>
+    <clipPath id="r"><rect x="630" y="130" width="600" height="475" rx="12"/></clipPath>
+    <filter id="sh" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="20" stdDeviation="22" flood-color="#14171c" flood-opacity=".25"/></filter>
+  </defs>
+  <rect width="1200" height="630" fill="#fafbfc"/>
+  <rect x="560" width="640" height="630" fill="url(#dots)" mask="url(#m)"/>
+  <g transform="translate(64 56) scale(0.0508)">
+    <rect width="1024" height="1024" rx="220" fill="#161816"/>
     <rect x="190" y="190" width="644" height="644" fill="none" stroke="#b7d892" stroke-width="28"/>
-    <g transform="translate(85 0) skewX(-8)" fill="none" stroke="#b7d892" stroke-width="46" stroke-linecap="square" stroke-linejoin="miter">
-      <path d="M290 700V330H500M290 510H460"/><path d="M580 700V470M580 545C580 495 615 468 660 468C710 468 740 500 740 552V700"/>
-    </g>
+    <g transform="translate(85 0) skewX(-8)" fill="none" stroke="#b7d892" stroke-width="46" stroke-linecap="square" stroke-linejoin="miter"><path d="M290 700V330H500M290 510H460"/><path d="M580 700V470M580 545C580 495 615 468 660 468C710 468 740 500 740 552V700"/></g>
   </g>
-  <text x="90" y="430" font-family="Iowan Old Style, Georgia, serif" font-size="92" font-weight="600" fill="#b7d892">FolioNotes</text>
-  <text x="90" y="500" font-family="-apple-system, Helvetica, Arial, sans-serif" font-size="38" fill="#e9e5d9">Local AI notes for your Mac.</text>
-  <text x="90" y="555" font-family="-apple-system, Helvetica, Arial, sans-serif" font-size="26" fill="#918f87">Plain Markdown. On-device models. Yours.</text>
+  <text x="132" y="93" font-family="Inter Tight, Inter, sans-serif" font-size="34" font-weight="600" fill="#14171c">FolioNotes</text>
+  <text font-family="Inter Tight, Inter, sans-serif" font-size="76" font-weight="700" fill="#14171c" letter-spacing="-1"><tspan x="64" y="246">Local AI notes</tspan><tspan x="64" y="325">for your Mac.</tspan></text>
+  <text font-family="Inter, sans-serif" font-size="27" fill="#566070"><tspan x="64" y="403">Speakers identified, images described,</tspan><tspan x="64" y="437">all on-device.</tspan></text>
+  <g filter="url(#sh)"><rect x="630" y="130" width="600" height="475" rx="12" fill="#fff"/></g>
+  <image href="screenshots/transcription-crop-light.webp" xlink:href="screenshots/transcription-crop-light.webp" x="630" y="130" width="600" height="475" clip-path="url(#r)"/>
+  <rect x="630.500" y="130.500" width="599" height="474" rx="12" fill="none" stroke="#14171c" stroke-opacity=".08"/>
 </svg>

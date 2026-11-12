@@ -194,6 +194,13 @@ Scanned the printed recipe card from the kitchen drawer so I can find it anywher
 ![Printed recipe card for cardamom buns](__CARD_ASSET__)
 
 Tip: open the image menu and use Extract text to copy the ingredients into my shopping list.` },
+  { key: 'sketch', path: '/projects/lumen', content: `Whiteboard sketch: Lumen checklist, version B
+
+Photographed the whiteboard after the design sync so the sketch is searchable later.
+
+![Whiteboard photo of the onboarding checklist, version A and version B](__SKETCH_ASSET__)
+
+Tip: open the image menu and use Describe image to get a short written description of the photo.` },
   { key: 'todo', content: `todo: Send Lumen test summary to Jonas and Priya\nBook the Lisbon flights before prices go up\nRename "workspace" to "team space" in the prototype` },
   { key: 'daily', content: `daily: Ran the second Lumen usability session this morning. The new invite step placement worked. Spent the afternoon refining checklist states and sketching the Lisbon itinerary.` },
 ]
