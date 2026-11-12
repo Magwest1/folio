@@ -2,10 +2,11 @@ import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { app, autoUpdater, BrowserWindow, Menu, desktopCapturer, dialog, ipcMain, screen, session, shell, systemPreferences } from 'electron'
+import { app, autoUpdater, BrowserWindow, Menu, Notification, desktopCapturer, dialog, ipcMain, powerMonitor, screen, session, shell, systemPreferences } from 'electron'
 import packageMetadata from '../package.json' with { type: 'json' }
 import { createUpdaterCoordinator } from './updater.js'
 import { configureStableGithubReleaseFeed } from './update-feed.js'
+import { createReminderNotifier } from './reminder-notifications.js'
 
 const isMac = process.platform === 'darwin'
 const preloadPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'preload.cjs')
@@ -25,6 +26,8 @@ let rendererStorageWriteTimer = null
 let rendererStorageWritePromise = Promise.resolve()
 let rendererStorageSyncFlushRevision = -1
 let updaterCoordinator = null
+let reminderNotifier = null
+let stopReminderEvents = null
 let updateFlushRequestId = 0
 let updateFlushTimer = null
 let resolveUpdateFlush = null
@@ -113,6 +116,25 @@ function registerRendererStorage() {
       scheduleRendererStoragePersist()
     }
   })
+}
+
+// Reminders: native notifications for the bundles' reminder events. Clicking one brings Folio forward on that card.
+async function showAndFocusAction(actionId) {
+  if (!mainWindow || mainWindow.isDestroyed()) await createWindow()
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+  // The preload keeps the id until the page subscribes, so a window that is still loading does not miss it.
+  mainWindow.webContents.send('folio:focus-action', actionId)
+}
+
+function registerReminderNotifications() {
+  reminderNotifier = createReminderNotifier({ Notification, focusAction: (actionId) => void showAndFocusAction(actionId) })
+  const manager = localRuntime.bundleManager
+  stopReminderEvents = manager?.onReminder((reminder, runtime) => reminderNotifier.handle(reminder, runtime))
+  ipcMain.handle('folio:reminders-native', () => reminderNotifier.delivers())
+  powerMonitor.on('resume', () => manager?.replanReminders())
 }
 
 async function pathExists(target) {
@@ -395,6 +417,7 @@ app.whenReady().then(async () => {
   localUrl = `http://127.0.0.1:${address.port}`
 
   setApplicationMenu()
+  registerReminderNotifications()
   ipcMain.handle('folio:get-update-state', () => updaterCoordinator?.getState() ?? null)
   ipcMain.handle('folio:check-for-updates', () => updaterCoordinator?.checkForUpdates() ?? null)
   ipcMain.handle('folio:start-update', () => updaterCoordinator?.startDownload() ?? null)
@@ -495,6 +518,8 @@ app.on('before-quit', () => {
     resolveUpdateFlush = null
     resolve(false)
   }
+  stopReminderEvents?.()
+  ipcMain.removeHandler('folio:reminders-native')
   ipcMain.removeHandler('folio:get-update-state')
   ipcMain.removeHandler('folio:check-for-updates')
   ipcMain.removeHandler('folio:start-update')

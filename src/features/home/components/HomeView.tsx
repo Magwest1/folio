@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ActionItem } from "../../../domain/types.ts";
+import type { ActionItem, ReminderItem } from "../../../domain/types.ts";
 import { useBoardDrag } from "../hooks/useBoardDrag.ts";
 import { useBoardLayout } from "../hooks/useBoardLayout.ts";
 import { useHomeActions } from "../hooks/useHomeActions.ts";
 import { useHomeCapture } from "../hooks/useHomeCapture.ts";
+import { useReminderFeed } from "../hooks/useReminderFeed.ts";
 import type { HomeMutation } from "../model/action-mutations.ts";
 import { successorId } from "../model/board-focus.ts";
 import { homeGreeting } from "../model/home-greeting.ts";
+import { reminderToast } from "../model/reminder-toast.ts";
 import { snoozePresets } from "../model/snooze-presets.ts";
 import { boardGroups, type WeekBoard } from "../model/week-board.ts";
 import type { BoardEnv } from "./BoardCard.tsx";
@@ -22,6 +24,8 @@ export type HomeViewProps = {
   /** This group is the one the user is working in. */
   active: boolean;
   focusRequest: number;
+  /** A notification asked for this card. `seq` makes asking twice for the same card count. */
+  focusAction?: { id: string | null; seq: number } | null;
   titleForNote: (noteId: string | null | undefined) => string | null;
   onFileCapture: (groupId: string, text: string) => void;
   onOpenAsDraft: (groupId: string, text: string) => void;
@@ -45,6 +49,7 @@ export function HomeView({
   groupId,
   active,
   focusRequest,
+  focusAction = null,
   titleForNote,
   onFileCapture,
   onOpenAsDraft,
@@ -56,8 +61,14 @@ export function HomeView({
   const capture = useHomeCapture(bundleId);
   const rootRef = useRef<HTMLDivElement>(null);
   const { layout, budget } = useBoardLayout(rootRef);
-  const { actions, board: liveBoard, loaded, unavailable, toasts, run, refreshSoon, dismissToast, clock, timeZone: zone } =
-    useHomeActions({ bundleId, pollMs, now, timeZone, columns: budget });
+  const {
+    actions, board: liveBoard, loaded, unavailable, toasts, run, refresh, refreshSoon, dismissToast, showToast,
+    snoozeWithPhrase, clearNote, clock, timeZone: zone,
+  } = useHomeActions({ bundleId, pollMs, now, timeZone, columns: budget });
+  const actionsRef = useRef(actions);
+  useEffect(() => {
+    actionsRef.current = actions;
+  });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [snoozeId, setSnoozeId] = useState<string | null>(null);
   const [cursorId, setCursorId] = useState<string | null>(null);
@@ -104,6 +115,36 @@ export function HomeView({
     [keepFocus, liveBoard, run],
   );
 
+  // In a browser, reminders that fired show up here as a quiet toast with the card's own choices.
+  const showReminder = useCallback(
+    (reminder: ReminderItem) => {
+      const content = reminderToast(reminder, {
+        now: () => (now ? now() : new Date()),
+        timeZone: zone,
+        apply: (id, mutation) => {
+          void (async () => {
+            if (!actionsRef.current.some((item) => item.id === id)) await refresh();
+            void run(id, mutation);
+          })();
+        },
+      });
+      showToast(content.message, undefined, { detail: content.detail, actions: content.actions });
+    },
+    [now, refresh, run, showToast, zone],
+  );
+  const { checkins } = useReminderFeed({ bundleId, onReminder: showReminder });
+  const checkinMap = useMemo(() => new Map(checkins.map((item) => [item.actionId, item.since])), [checkins]);
+
+  // A clicked notification names the card to land on; it may still be loading, so wait for it to appear.
+  const [wantedId, setWantedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusAction?.id) return;
+    setWantedId(focusAction.id);
+    void refresh();
+    const giveUp = window.setTimeout(() => setWantedId(null), 6_000);
+    return () => window.clearTimeout(giveUp);
+  }, [focusAction, refresh]);
+
   const drag = useBoardDrag({
     today: liveBoard.today,
     findAction,
@@ -124,6 +165,14 @@ export function HomeView({
     [board],
   );
   const tabbableId = cursorId && cardIds.includes(cursorId) ? cursorId : (cardIds[0] ?? null);
+  useEffect(() => {
+    if (!wantedId) return;
+    const card = cardElement(rootRef.current, wantedId);
+    if (!card) return;
+    card.scrollIntoView?.({ block: "nearest" });
+    card.focus({ preventScroll: true });
+    setWantedId(null);
+  }, [cardIds, wantedId]);
 
   const env: BoardEnv = useMemo(
     () => ({
@@ -142,9 +191,17 @@ export function HomeView({
         setSnoozeId(id);
       },
       onMutate: mutate,
+      onSnoozePhrase: (action, phrase) => snoozeWithPhrase(action.id, phrase),
       onOpenSource,
+      onClearNote: (action) => {
+        if (action.anchor?.noteId) void clearNote(action.anchor.noteId, titleForNote(action.anchor.noteId));
+      },
+      checkins: checkinMap,
     }),
-    [clock, drag, editingId, keepFocus, mutate, onOpenSource, snoozeId, tabbableId, titleForNote, zone],
+    [
+      checkinMap, clearNote, clock, drag, editingId, keepFocus, mutate, onOpenSource, snoozeId, snoozeWithPhrase,
+      tabbableId, titleForNote, zone,
+    ],
   );
 
   function handOff(send: (groupId: string, text: string) => void) {

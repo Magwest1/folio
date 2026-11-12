@@ -7,7 +7,7 @@ import {
   normalizePerson, normalizeSnooze, normalizeSource, normalizeText,
 } from './validate.js'
 
-export { fadeStale } from './fade.js'
+export { fadeStale, fadeUnanswered, isQuiet } from './fade.js'
 export { KINDS, STATUSES, CLOSED_STATUSES } from './validate.js'
 
 const FEEDBACK_LIMIT = 2000
@@ -20,13 +20,21 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
   let state = null
   const data = () => (state ||= readState(filePath, now))
   const writer = createWriter(filePath, data)
-  const persist = () => writer.save()
+  const listeners = new Set()
+  const persist = () => {
+    const saved = writer.save()
+    for (const listener of listeners) {
+      try { listener() } catch (error) { console.error(`An action store listener failed. ${error.message}`) }
+    }
+    return saved
+  }
   const stamp = (at) => (at ?? now()).toISOString()
   const inScope = (scope, id) => (scope.endsWith('/') ? id.startsWith(scope) : id === scope)
 
-  function present(action) {
+  // `raw` keeps a lapsed snooze as snoozed, so the reminder planner can still see which snooze just ended.
+  function present(action, raw = false) {
     const view = clone(action)
-    if (view.status === 'snoozed' && view.snoozedUntil && Date.parse(view.snoozedUntil) <= now().getTime()) {
+    if (!raw && view.status === 'snoozed' && view.snoozedUntil && Date.parse(view.snoozedUntil) <= now().getTime()) {
       view.status = 'open'
       view.snoozedUntil = null
     }
@@ -125,6 +133,8 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
   const store = {
     async load() { data() },
     flush: () => writer.flush(),
+    // Called after every change that is saved. Returns an unsubscribe function.
+    onChange(listener) { listeners.add(listener); return () => listeners.delete(listener) },
 
     list(filter = {}) {
       const statuses = asList(filter.status)
@@ -132,7 +142,8 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
       const person = typeof filter.person === 'string' && filter.person ? filter.person.toLowerCase() : null
       const { dueFrom, dueTo } = filter
       const includeClosed = filter.includeClosed === true || filter.includeClosed === 'true' || filter.includeClosed === '1'
-      return data().actions.map(present).filter((action) => {
+      const raw = filter.rawSnooze === true
+      return data().actions.map((action) => present(action, raw)).filter((action) => {
         if (statuses ? !statuses.includes(action.status) : !includeClosed && CLOSED_STATUSES.includes(action.status)) return false
         if (kinds && !kinds.includes(action.kind)) return false
         if (filter.noteId && action.anchor?.noteId !== filter.noteId) return false
@@ -229,6 +240,50 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
       const action = require(id)
       if (action.status !== 'open' || action.snoozedUntil) { move(action, 'open'); persist() }
       return present(action)
+    },
+
+    // "Still relevant? Keep": resets the quiet clock without changing anything else.
+    touch(id) {
+      const action = require(id)
+      if (CLOSED_STATUSES.includes(action.status)) throw httpError(409, 'Reopen the action first.')
+      action.touchedAt = stamp()
+      persist()
+      return present(action)
+    },
+
+    // One undoable batch: lets go every open, snoozed or suggested action anchored in the note.
+    clearNote(noteId) {
+      if (typeof noteId !== 'string' || !noteId) throw httpError(400, 'noteId must be a note id.')
+      const ids = []
+      for (const action of data().actions) {
+        if (action.anchor?.noteId !== noteId || !['open', 'snoozed', 'suggested'].includes(action.status)) continue
+        move(action, 'let-go')
+        record('not-important', action)
+        ids.push(action.id)
+      }
+      if (ids.length) persist()
+      return ids
+    },
+
+    // Reverses clearNote (or any batch) for the actions whose last step was a let-go.
+    undoMany(ids) {
+      const restored = []
+      for (const id of Array.isArray(ids) ? ids : []) {
+        const action = data().actions.find((item) => item.id === id)
+        if (action?.status !== 'let-go') continue
+        const last = action.history.at(-1)
+        const { feedback } = data()
+        const index = feedback.findLastIndex((entry) => entry.actionId === id && entry.type === 'not-important')
+        if (index !== -1) feedback.splice(index, 1)
+        action.history.pop()
+        action.status = last.from
+        action.snoozedUntil = last.snoozedUntil ?? null
+        action.updatedAt = stamp()
+        action.touchedAt = action.updatedAt
+        restored.push(id)
+      }
+      if (restored.length) persist()
+      return restored
     },
 
     snooze(id, until) {

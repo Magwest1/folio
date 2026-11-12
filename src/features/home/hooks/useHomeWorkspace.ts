@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { ActionItem, BundleFile, Note, TabGroup, ViewerDocument } from "../../../domain/types.ts";
 import { revealPassageWhenReady } from "../../../lib/passage-reveal.ts";
@@ -53,6 +53,8 @@ export function useHomeWorkspace({
     fileDraft(draft);
   }, [documents, fileDraft]);
 
+  const [focusAction, setFocusAction] = useState<HomeWorkspaceBindings["focusAction"]>(null);
+
   const openHome = useCallback(
     (groupId = activeGroupId) => {
       const opened = openHomeTab(groups, groupId);
@@ -62,6 +64,18 @@ export function useHomeWorkspace({
     },
     [activeGroupId, groups, requestFocus, setActiveGroupId, setGroups],
   );
+
+  // A clicked system notification brings Home forward and names the card to land on.
+  const openHomeRef = useRef(openHome);
+  useEffect(() => {
+    openHomeRef.current = openHome;
+  });
+  useEffect(() => {
+    return window.folio?.reminders?.onFocusAction((actionId) => {
+      openHomeRef.current();
+      setFocusAction((current) => ({ id: actionId, seq: (current?.seq ?? 0) + 1 }));
+    });
+  }, []);
 
   const titles = useMemo(() => {
     const map = new Map<string, string>();
@@ -92,8 +106,9 @@ export function useHomeWorkspace({
             revealPassageWhenReady(noteId, { from: anchor.from, to: anchor.to, quote: anchor.quote });
         });
       },
+      focusAction,
     }),
-    [activeGroupId, bundleId, createDraft, openNote, rememberSelection, titles],
+    [activeGroupId, bundleId, createDraft, focusAction, openNote, rememberSelection, titles],
   );
 
   return { bindings, openHome };

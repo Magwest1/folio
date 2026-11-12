@@ -10,7 +10,9 @@ export type HomeMutation =
   | { type: "not-an-action" }
   /** `label` words the undo toast, for example when a card is moved to another day. */
   | { type: "edit"; patch: ActionPatch; label?: string }
-  | { type: "remove-auto-added" };
+  | { type: "remove-auto-added" }
+  /** "Still relevant?" answered yes: only resets the quiet clock. */
+  | { type: "keep" };
 
 export const TRANSITION_FOR: Record<Exclude<HomeMutation["type"], "edit">, ActionTransition> = {
   accept: "confirm",
@@ -20,9 +22,10 @@ export const TRANSITION_FOR: Record<Exclude<HomeMutation["type"], "edit">, Actio
   "not-important": "let-go",
   "not-an-action": "reject",
   "remove-auto-added": "reject",
+  keep: "keep",
 };
 
-const STATUS_FOR: Record<Exclude<HomeMutation["type"], "edit" | "snooze" | "remove-auto-added">, ActionStatus> = {
+const STATUS_FOR: Record<Exclude<HomeMutation["type"], "edit" | "snooze" | "remove-auto-added" | "keep">, ActionStatus> = {
   accept: "open",
   done: "done",
   reopen: "open",
@@ -49,12 +52,15 @@ export function toastLabel(mutation: HomeMutation): string {
       return mutation.label ?? "Saved.";
     case "remove-auto-added":
       return "Removed. It won't come back.";
+    case "keep":
+      return "Kept. I won't ask again for a while.";
   }
 }
 
 /** The card as it will look once the server agrees, so the UI never waits. */
 export function applyOptimistic(action: ActionItem, mutation: HomeMutation, now: Date): ActionItem {
   const at = now.toISOString();
+  if (mutation.type === "keep") return { ...action, touchedAt: at };
   if (mutation.type === "edit")
     return { ...action, ...mutation.patch, editedByUser: true, updatedAt: at, touchedAt: at };
   const to: ActionStatus =

@@ -1,10 +1,14 @@
 import type {
   ActionItem,
+  ActionKind,
+  ActionSuppressions,
   ActionPatch,
   ActionStatus,
   ActionTransition,
   NoteLanguageInfo,
   NoteTranslation,
+  PendingReminders,
+  ReminderSettings,
   NoteTranslationTarget,
   TranslatedExportJob,
   TranslatedExportTarget,
@@ -187,4 +191,54 @@ export function patchAction(id: string, patch: ActionPatch): Promise<ActionItem>
     method: "PATCH",
     body: JSON.stringify(patch),
   });
+}
+
+/** Snoozes in plain words ("tomorrow after lunch"). The server answers with the resolved time. */
+export function snoozeActionWithPhrase(
+  id: string,
+  phrase: string,
+  timeZone: string,
+): Promise<ActionItem & { until: string }> {
+  return api<ActionItem & { until: string }>(`/api/actions/${encodeURIComponent(id)}/snooze`, {
+    method: "POST",
+    body: JSON.stringify({ phrase, timeZone }),
+  });
+}
+
+export function clearNoteActions(noteId: string): Promise<{ ids: string[] }> {
+  return api<{ ids: string[] }>("/api/actions/clear-note", { method: "POST", body: JSON.stringify({ noteId }) });
+}
+
+export function undoActionBatch(ids: string[]): Promise<{ ids: string[] }> {
+  return api<{ ids: string[] }>("/api/actions/undo-batch", { method: "POST", body: JSON.stringify({ ids }) });
+}
+
+export function fetchReminderSettings(signal?: AbortSignal): Promise<ReminderSettings> {
+  return api<ReminderSettings>("/api/reminders/settings", { signal });
+}
+
+export function saveReminderSettings(patch: Partial<ReminderSettings> | Record<string, unknown>): Promise<ReminderSettings> {
+  return api<ReminderSettings>("/api/reminders/settings", { method: "PUT", body: JSON.stringify(patch) });
+}
+
+export function fetchPendingReminders(signal?: AbortSignal): Promise<PendingReminders> {
+  return api<PendingReminders>("/api/reminders/pending", { signal });
+}
+
+export function ackReminder(id: string): Promise<{ acked: boolean }> {
+  return api<{ acked: boolean }>(`/api/reminders/${encodeURIComponent(id)}/ack`, { method: "POST" });
+}
+
+export function fetchActionSuppressions(signal?: AbortSignal): Promise<ActionSuppressions> {
+  return api<ActionSuppressions>("/api/actions/suppressions", { signal });
+}
+
+export function setActionSuppression(
+  target: { kind: ActionKind } | { source: string },
+  muted: boolean,
+): Promise<ActionSuppressions> {
+  if (muted)
+    return api<ActionSuppressions>("/api/actions/suppressions", { method: "POST", body: JSON.stringify(target) });
+  const [key, value] = Object.entries(target)[0];
+  return api<ActionSuppressions>(`/api/actions/suppressions?${key}=${encodeURIComponent(value)}`, { method: "DELETE" });
 }

@@ -88,6 +88,12 @@ declare global {
       startUpdate?: () => Promise<DesktopUpdateState | null>;
       onUpdateState?: (handler: (state: DesktopUpdateState) => void) => () => void;
       onPrepareUpdateRestart?: (handler: () => Promise<boolean>) => () => void;
+      reminders?: {
+        /** True while the system shows reminders, so the app stays quiet about them. */
+        deliversNatively: () => Promise<boolean>;
+        /** A notification was clicked: the action to focus, or null to just open Home. */
+        onFocusAction: (handler: (actionId: string | null) => void) => () => void;
+      };
     };
   }
 }

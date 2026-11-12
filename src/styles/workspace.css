@@ -2958,6 +2958,18 @@
   }
 }
 
+.document-footer-notice {
+  margin: 0;
+  padding-top: 7px;
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 10px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  border-top: 1px solid rgba(var(--line-rgb), 0.65);
+}
+
 .document-footer-links {
   min-width: 0;
   padding-top: 7px;

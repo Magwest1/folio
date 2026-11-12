@@ -13,6 +13,14 @@ function systemAudioSupported() {
   }
 }
 
+// A notification click can arrive before the page has subscribed; keep the id until it does.
+let pendingFocusAction
+const focusHandlers = new Set()
+ipcRenderer.on('folio:focus-action', (_event, actionId) => {
+  if (!focusHandlers.size) pendingFocusAction = actionId
+  else for (const handler of focusHandlers) handler(actionId)
+})
+
 contextBridge.exposeInMainWorld('folio', {
   getStorage: (key) => ipcRenderer.sendSync('folio:get-storage', key),
   setStorage: (key, value) => ipcRenderer.send('folio:set-storage', key, value),
@@ -42,6 +50,18 @@ contextBridge.exposeInMainWorld('folio', {
     }
     ipcRenderer.on('folio:prepare-update-restart', listener)
     return () => ipcRenderer.removeListener('folio:prepare-update-restart', listener)
+  },
+  reminders: {
+    deliversNatively: () => ipcRenderer.invoke('folio:reminders-native'),
+    onFocusAction: (handler) => {
+      focusHandlers.add(handler)
+      if (pendingFocusAction !== undefined) {
+        const actionId = pendingFocusAction
+        pendingFocusAction = undefined
+        handler(actionId)
+      }
+      return () => focusHandlers.delete(handler)
+    },
   },
   closeWindow: () => ipcRenderer.send('folio:close-window'),
   saveMarkdownExport: (filename, content) => ipcRenderer.invoke('folio:save-markdown-export', filename, content),
