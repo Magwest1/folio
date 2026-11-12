@@ -267,3 +267,7 @@ h1,h2,h3{text-wrap:balance;margin:0;font-family:var(--display);font-weight:600;c
 .frame{background:#fff;border-radius:12px;box-shadow:var(--shot);overflow:hidden}
 .ba-item .frame img{border-radius:0;box-shadow:none}
 .ba-item .frame img+img{border-top:1px solid var(--line)}
+.tool-wide{max-width:440px;margin:clamp(28px,4vw,44px) auto 0;padding-bottom:38px}
+.tool-wide img{width:100%;height:auto;border-radius:12px;box-shadow:var(--shot);background:#fff}
+.tool-label.below{top:auto;bottom:0}
+.tool-label.below::after{bottom:auto;top:-5px}

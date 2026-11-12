@@ -397,7 +397,7 @@ const steps = {
     const a = await sw.boundingBox(), g = await grp.boundingBox()
     // Title row plus the controls (the description line under the title is cropped out), and the note body.
     const head = { x: 316, y: 44, width: 800, height: 76 }
-    const body = { x: 316, y: 196, width: 800, height: 250 }
+    const body = { x: 316, y: 196, width: 800, height: 220 }
     for (const [wantEn, tag] of [[false, 'no'], [true, 'en']]) {
       await go(wantEn)
       await page.evaluate(([x, y, w, h]) => {
@@ -410,6 +410,13 @@ const steps = {
       await page.evaluate(() => document.getElementById('capture-ring')?.remove())
       await shotLightOnly(`translate-${tag}`, page, { clip: body })
     }
+      // Large close-up of the note header controls (EN active), with button offsets for the page's callout labels.
+    const ge = await grp.boundingBox(), ae = await sw.boundingBox()
+    const en = await grp.getByRole('button', { name: 'English' }).boundingBox()
+    const clip = { x: ge.x + ge.width + 14 - 200, y: ae.y - 14, width: 200, height: ae.height + 28 }
+    await shotLightOnly('translate-controls', page, { clip })
+    const frac = (bb) => Number((((bb.x + bb.width / 2) - clip.x) / clip.width).toFixed(3))
+    console.log('translate-controls label offsets (fraction of crop width):', JSON.stringify({ switch: frac(ae), languages: frac(ge), en: frac(en) }))
   },
   async translatedExport() {
     await openNote(/Lumen-workshop/i)
