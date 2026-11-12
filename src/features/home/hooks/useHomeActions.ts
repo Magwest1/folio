@@ -7,6 +7,7 @@ import {
   TRANSITION_FOR,
   type HomeMutation,
 } from "../model/action-mutations.ts";
+import { MAX_BUDGET } from "../model/time-buckets.ts";
 import { deviceTimeZone } from "../model/home-time.ts";
 import { buildWeekBoard, type WeekBoard } from "../model/week-board.ts";
 
@@ -24,6 +25,8 @@ type Options = {
   bundleId?: string;
   timeZone?: string;
   pollMs?: number;
+  /** Columns the board can hold, Today and Later included. */
+  columns?: number;
   now?: () => Date;
 };
 
@@ -51,6 +54,7 @@ export function useHomeActions({
   bundleId,
   timeZone = deviceTimeZone(),
   pollMs = 45_000,
+  columns = MAX_BUDGET,
   now = () => new Date(),
 }: Options = {}) {
   const [actions, setActions] = useState<ActionItem[]>([]);
@@ -177,7 +181,10 @@ export function useHomeActions({
     }
   }, [commit, enqueue, settle, showToast]);
 
-  const board: WeekBoard = useMemo(() => buildWeekBoard(actions, clock, timeZone), [actions, clock, timeZone]);
+  const board: WeekBoard = useMemo(
+    () => buildWeekBoard(actions, clock, timeZone, columns),
+    [actions, clock, columns, timeZone],
+  );
 
   return { actions, board, loaded, unavailable, toasts, run, refresh, refreshSoon, dismissToast, timeZone, clock };
 }

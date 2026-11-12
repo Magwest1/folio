@@ -86,6 +86,16 @@ test('snoozed actions report open once their time has passed', async (context) =
   assert.equal(store.undo(action.id).status, 'open')
 })
 
+test('update accepts a window due, as dropped on a week or month column, and replaces a date with it', async (context) => {
+  const { store } = await setup(context)
+  const { added: [action] } = store.addFromExtraction('/n.md', [item({ due: { date: '2026-05-20', time: '10:00' } })])
+  const moved = store.update(action.id, { due: { window: { start: '2026-05-25', end: '2026-05-31' } } })
+  assert.deepEqual(moved.due, { window: { start: '2026-05-25', end: '2026-05-31' } })
+  assert.equal(store.list({ dueFrom: '2026-05-26', dueTo: '2026-05-27' }).length, 1)
+  assert.throws(() => store.update(action.id, { due: { window: { start: '2026-05-31', end: '2026-05-25' } } }), { status: 400 })
+  assert.deepEqual(store.update(action.id, { due: { date: '2026-06-02' } }).due, { date: '2026-06-02' })
+})
+
 test('update records an edit, and extraction keeps the edited text', async (context) => {
   const { store } = await setup(context)
   const { added: [action] } = store.addFromExtraction('/n.md', [item()])

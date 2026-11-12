@@ -29,6 +29,12 @@ function action(overrides: Partial<ActionItem> = {}): ActionItem {
   };
 }
 
+/** Eight dated items on the six days after today: a busy week, so every day keeps its own column. */
+const fill = () =>
+  Array.from({ length: 8 }, (_, index) =>
+    action({ id: `fill_${index}`, text: `Filler ${index}`, due: { date: `2026-11-${13 + (index % 6)}` } }),
+  );
+
 type Call = { method: string; path: string; body: unknown };
 
 /** A tiny stand-in for /api/actions with the same transitions as the real store. */
@@ -266,6 +272,7 @@ describe("Home week storyboard", () => {
       action({ text: "Look into insurance" }),
       action({ text: "Maybe call Per", status: "suggested", origin: "suggested" }),
       action({ text: "Old idea", status: "faded" }),
+      ...fill(),
     ]);
     vi.stubGlobal("fetch", server.fetchMock);
     renderHome();
@@ -282,9 +289,8 @@ describe("Home week storyboard", () => {
     expect(within(saturday).getByText("Ring the bank")).toBeInTheDocument();
     expect(within(saturday).getByText("09:30")).toBeInTheDocument();
     expect(within(saturday).getByText("Kari")).toBeInTheDocument();
-    expect(within(column("sun 15")).queryByRole("listitem")).not.toBeInTheDocument();
     expect(within(column("later")).getByText("Renew the lease")).toBeInTheDocument();
-    expect(within(column("later")).getByText("24 Dec")).toBeInTheDocument();
+    expect(within(column("later")).getByText("24 dec")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "sometime this week" })).getByText("Plan the offsite")).toBeInTheDocument();
 
     expect(within(column("waiting on others")).getByText("Hear back on quote")).toBeInTheDocument();
@@ -346,8 +352,10 @@ describe("Home week storyboard", () => {
     expect(await screen.findByText("Nothing needs you right now.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Thursday is wide open.");
     expect(field()).toBeInTheDocument();
-    expect(column("fri 13")).toHaveClass("is-empty");
-    expect(column("fri 13")).toHaveTextContent(/^fri 13$/);
+    // Quiet time is a slim dashed range, not a row of empty days.
+    expect(column("fri–sun")).toHaveClass("is-empty");
+    expect(column("fri–sun")).toHaveTextContent(/^fri–sun$/);
+    expect(column("mon–wed")).toHaveClass("is-empty");
     expect(column(/Today/)).toHaveClass("is-today");
   });
 
@@ -421,7 +429,7 @@ describe("Home agenda fallback", () => {
     expect(container.querySelector("[data-home-board]")).toHaveAttribute("data-layout", "agenda");
     // The same days, in order, each with its heading and list.
     expect(screen.getAllByRole("heading", { level: 2 }).slice(0, 3).map((heading) => heading.textContent)).toEqual([
-      "Today thu 12", "fri 13", "sat 14",
+      "Today thu 12", "fri 13", "sat–sun",
     ]);
     fireEvent.click(within(cardOf("Book the venue")).getByRole("button", { name: "Done" }));
     await waitFor(() => expect(server.writes()[0]).toMatchObject({ path: `/api/actions/${item.id}/complete` }));
@@ -557,7 +565,7 @@ describe("Home changes", () => {
 describe("Home drag and drop", () => {
   it("drops a card on another day and sets its date, keeping the time", async () => {
     const item = action({ text: "Ring the bank", due: { date: "2026-11-12", time: "09:30" } });
-    const server = fakeActionServer([item]);
+    const server = fakeActionServer([item, ...fill()]);
     vi.stubGlobal("fetch", server.fetchMock);
     renderHome();
     await screen.findByText("Ring the bank");
@@ -571,7 +579,7 @@ describe("Home drag and drop", () => {
 
   it("undoes a move through the toast", async () => {
     const item = action({ text: "Ring the bank", due: { date: "2026-11-13" } });
-    const server = fakeActionServer([item]);
+    const server = fakeActionServer([item, ...fill()]);
     vi.stubGlobal("fetch", server.fetchMock);
     renderHome();
     await screen.findByText("Ring the bank");
@@ -588,7 +596,7 @@ describe("Home drag and drop", () => {
     const dated = action({ text: "Dated one", due: { date: "2026-11-13" } });
     const loose = action({ text: "Loose one" });
     const waiting = action({ text: "Waiting one", kind: "waiting-on", person: "Ola" });
-    const server = fakeActionServer([dated, loose, waiting]);
+    const server = fakeActionServer([dated, loose, waiting, ...fill()]);
     vi.stubGlobal("fetch", server.fetchMock);
     renderHome();
     await screen.findByText("Dated one");
@@ -632,7 +640,7 @@ describe("Home drag and drop", () => {
   });
 
   it("highlights the target while hovering and ignores drags that did not start on a card", async () => {
-    vi.stubGlobal("fetch", fakeActionServer([action({ text: "Mover", due: { date: "2026-11-13" } })]).fetchMock);
+    vi.stubGlobal("fetch", fakeActionServer([action({ text: "Mover", due: { date: "2026-11-13" } }), ...fill()]).fetchMock);
     renderHome();
     await screen.findByText("Mover");
     const transfer = dataTransfer();
@@ -644,6 +652,74 @@ describe("Home drag and drop", () => {
     fireEvent.dragLeave(column("sat 14"), { dataTransfer: transfer, relatedTarget: document.body });
     expect(column("sat 14")).not.toHaveClass("is-over");
     fireEvent.dragEnd(cardOf("Mover"), { dataTransfer: transfer });
+  });
+});
+
+describe("Home adaptive columns", () => {
+  it("drops onto a range column and gives the card that window", async () => {
+    const item = action({ text: "Mover", due: { date: "2026-11-13" } });
+    const server = fakeActionServer([item]);
+    vi.stubGlobal("fetch", server.fetchMock);
+    renderHome();
+    await screen.findByText("Mover");
+    // A quiet week: the days after Friday are two slim ranges.
+    expect(within(column("fri 13")).getByText("Mover")).toBeInTheDocument();
+    await dragTo(cardOf("Mover"), column("mon–wed"));
+    expect(within(column("mon–wed")).getByText("Mover")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Moved to Monday to Wednesday.");
+    await waitFor(() => expect(server.writes()).toEqual([
+      { method: "PATCH", path: `/api/actions/${item.id}`, body: { due: { window: { start: "2026-11-16", end: "2026-11-18" } } } },
+    ]));
+    // Undo puts the old date back.
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(within(column("fri 13")).getByText("Mover")).toBeInTheDocument();
+    await waitFor(() => expect(server.writes().at(-1)?.body).toEqual({ due: { date: "2026-11-13" } }));
+  });
+
+  it("zooms out to show what is due next month, with dates on the cards", async () => {
+    vi.stubGlobal("fetch", fakeActionServer([
+      action({ text: "Renew the lease", due: { date: "2026-12-24" } }),
+      action({ text: "Plan Q1", due: { date: "2027-01-12" } }),
+    ]).fetchMock);
+    renderHome();
+    await screen.findByText("Renew the lease");
+    // Nothing hides behind Later, and a wide column names each card's date.
+    expect(within(column("later")).queryByText("Renew the lease")).not.toBeInTheDocument();
+    expect(within(cardOf("Renew the lease")).getByText(/^(\d{1,2} dec|[a-z]{3} \d{1,2})$/)).toBeInTheDocument();
+  });
+
+  it("moves into the next column with Shift+Right and names the bucket", async () => {
+    const item = action({ text: "Mover", due: { date: "2026-11-13" } });
+    const server = fakeActionServer([item]);
+    vi.stubGlobal("fetch", server.fetchMock);
+    renderHome();
+    await screen.findByText("Mover");
+    cardOf("Mover").focus();
+    fireEvent.keyDown(cardOf("Mover"), { key: "ArrowRight", shiftKey: true });
+    expect(screen.getByRole("status")).toHaveTextContent("Moved to Saturday to Sunday.");
+    // With nothing else due, the quiet days merge, and the card sits inside that wider column.
+    expect(within(column("fri–sun")).getByText("Mover")).toBeInTheDocument();
+    await waitFor(() => expect(server.writes()[0].body).toEqual({ due: { window: { start: "2026-11-14", end: "2026-11-15" } } }));
+  });
+
+  it("holds the columns still while a card is in the air", async () => {
+    const server = fakeActionServer([action({ text: "Mover", due: { date: "2026-11-13" } })]);
+    vi.stubGlobal("fetch", server.fetchMock);
+    renderHome();
+    await screen.findByText("Mover");
+    const transfer = dataTransfer();
+    fireEvent.dragStart(cardOf("Mover"), { dataTransfer: transfer });
+    await screen.findByText("Let go");
+    // Arrivals during a drag change the data, not the columns under the pointer.
+    const before = [...document.querySelectorAll("[data-column]")].map((element) => element.getAttribute("data-date"));
+    server.store.set("busy", action({ id: "busy", text: "Arrived", due: { date: "2026-12-10" } }));
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
+    act(() => { window.dispatchEvent(new Event("focus")); });
+    await waitFor(() => expect(server.calls.filter((call) => call.method === "GET").length).toBeGreaterThan(2));
+    expect([...document.querySelectorAll("[data-column]")].map((element) => element.getAttribute("data-date"))).toEqual(before);
+    fireEvent.dragEnd(cardOf("Mover"), { dataTransfer: transfer });
+    vi.restoreAllMocks();
+    await waitFor(() => expect(screen.getByText("Arrived")).toBeInTheDocument());
   });
 });
 
@@ -692,7 +768,7 @@ describe("Home board keyboard", () => {
 
   it("moves a focused card a day with Shift+arrows and announces it", async () => {
     const item = action({ text: "Ring the bank", due: { date: "2026-11-13", time: "10:00" } });
-    const server = fakeActionServer([item]);
+    const server = fakeActionServer([item, ...fill()]);
     vi.stubGlobal("fetch", server.fetchMock);
     renderHome();
     await screen.findByText("Ring the bank");

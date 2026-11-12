@@ -1,16 +1,13 @@
 import type { ActionDue, ActionItem } from "../../../domain/types.ts";
+import { addDays, daysBetween, localDate, shortDate, startOfWeek, weekdayName } from "./home-time.ts";
 import {
-  addDays,
-  daysBetween,
-  localDate,
-  shortDate,
-  startOfWeek,
-  weekdayIndex,
-  weekdayName,
-} from "./home-time.ts";
-
-/** Today plus the next six days. */
-export const VISIBLE_DAYS = 7;
+  buildTimeColumns,
+  entryDateLabel,
+  HORIZON_CAP_DAYS,
+  HORIZON_TARGET,
+  MAX_BUDGET,
+  type ColumnSpec,
+} from "./time-buckets.ts";
 
 export type BoardPlacement =
   | "today"
@@ -27,11 +24,13 @@ export type BoardEntry = {
   action: ActionItem;
   placement: BoardPlacement;
   suggested: boolean;
+  /** The column the card sits in, or the first one a window band covers. Null in the tray. */
+  column: string | null;
   /** Finished today: kept in the Today column, quietly, until tomorrow. */
   completed: boolean;
   /** "14:00" when the due date has a time. */
   timeLabel: string | null;
-  /** "13 Dec" for anything in the Later column. */
+  /** "fri 20" or "3 dec" in a column that spans more than a day. */
   dateLabel: string | null;
   /** "3 days" for items waiting on someone else. */
   waitingLabel: string | null;
@@ -43,14 +42,7 @@ export type BoardEntry = {
 
 export type EarlierGroup = { date: string; label: string; entries: BoardEntry[] };
 
-export type DayColumn = {
-  date: string;
-  /** "fri 13", with the month on the first of a month: "tue 1 dec". */
-  label: string;
-  /** "Friday 13", for announcements and assistive technology. */
-  fullLabel: string;
-  isToday: boolean;
-  weekend: boolean;
+export type TimeColumn = ColumnSpec & {
   /** Due earlier than today. Only present on the Today column. */
   earlier: EarlierGroup[];
   entries: BoardEntry[];
@@ -59,15 +51,9 @@ export type DayColumn = {
 export type WindowBand = {
   key: string;
   label: string;
-  /** Zero-based first and last visible day columns the band spans. */
+  /** Indexes of the first and last columns the band spans. */
   from: number;
   to: number;
-  entries: BoardEntry[];
-};
-
-export type LaterColumn = {
-  /** The first date the column stands for. */
-  date: string;
   entries: BoardEntry[];
 };
 
@@ -83,10 +69,11 @@ export type BoardSummary = {
 
 export type WeekBoard = {
   today: string;
-  /** Today first, then the next six days. */
-  days: DayColumn[];
+  /** Today first, then days, ranges, weeks and months, and Later last. */
+  columns: TimeColumn[];
+  /** The last date the columns before Later cover. */
+  horizon: string;
   bands: WindowBand[];
-  later: LaterColumn;
   toConfirm: BoardEntry[];
   looseEnds: BoardEntry[];
   waiting: BoardEntry[];
@@ -106,6 +93,7 @@ export function dueRange(due: ActionDue | null): Range | null {
   return { start: due.date, end: due.date };
 }
 
+const isWindow = (action: ActionItem): boolean => Boolean(action.due && "window" in action.due);
 const dueTime = (action: ActionItem): string => (action.due && "date" in action.due ? (action.due.time ?? "") : "");
 
 /** "3 days" or "just now": how long someone else has had it. */
@@ -147,25 +135,6 @@ function byStartThenTime(left: BoardEntry, right: BoardEntry): number {
 
 const openFirst = (left: BoardEntry, right: BoardEntry) => Number(left.completed) - Number(right.completed);
 
-function columnLabel(date: string): { label: string; fullLabel: string } {
-  const day = Number(date.slice(8));
-  const weekday = weekdayName(date);
-  const month = shortDate(date).split(" ")[1].toLowerCase();
-  return {
-    label: `${weekday.slice(0, 3).toLowerCase()} ${day}${day === 1 ? ` ${month}` : ""}`,
-    fullLabel: `${weekday} ${day}`,
-  };
-}
-
-/** "Friday 13" for the visible week, "Friday 13 Dec" beyond it. Used in announcements. */
-export function dayAnnouncement(date: string, today: string): string {
-  const offset = daysBetween(today, date);
-  if (offset === 0) return "today";
-  const day = Number(date.slice(8));
-  const base = `${weekdayName(date)} ${day}`;
-  return offset > 0 && offset < VISIBLE_DAYS ? base : `${base} ${shortDate(date).split(" ")[1]}`;
-}
-
 function earlierLabel(date: string, today: string): string {
   const diff = daysBetween(today, date);
   if (diff === -1) return "from yesterday";
@@ -182,46 +151,37 @@ function windowLabel(range: Range, today: string): string {
   return `sometime ${shortDate(range.start)} to ${shortDate(range.end)}`;
 }
 
+type Dated = { entry: BoardEntry; start: string; end: string; window: boolean };
+
 /**
- * Where everything lives on the week storyboard. Pure: actions, the clock and
- * a timezone in; day columns, window bands, the Later column and the tray out.
+ * Where everything lives on the week storyboard. Pure: actions, the clock, a timezone
+ * and the number of columns the pane can hold in; time columns, window bands and the
+ * tray out. Columns zoom out to the right when little is due.
  */
-export function buildWeekBoard(actions: ActionItem[], now: Date, timeZone: string): WeekBoard {
+export function buildWeekBoard(
+  actions: ActionItem[],
+  now: Date,
+  timeZone: string,
+  budget: number = MAX_BUDGET,
+  target: number = HORIZON_TARGET,
+  capDays: number = HORIZON_CAP_DAYS,
+): WeekBoard {
   const today = localDate(now, timeZone);
   const nowMs = now.getTime();
-  const lastVisible = addDays(today, VISIBLE_DAYS - 1);
-
-  const days: DayColumn[] = Array.from({ length: VISIBLE_DAYS }, (_, offset) => {
-    const date = addDays(today, offset);
-    return {
-      date,
-      ...columnLabel(date),
-      isToday: offset === 0,
-      weekend: weekdayIndex(date) >= 5,
-      earlier: [],
-      entries: [],
-    };
-  });
+  const todayEntries: BoardEntry[] = [];
+  const earlier: BoardEntry[] = [];
+  const dated: Dated[] = [];
   const board: WeekBoard = {
     today,
-    days,
+    columns: [],
+    horizon: today,
     bands: [],
-    later: { date: addDays(today, VISIBLE_DAYS), entries: [] },
     toConfirm: [],
     looseEnds: [],
     waiting: [],
     faded: [],
     summary: { today: 0, comingUp: 0, waiting: 0, toConfirm: 0, looseEnds: 0 },
     empty: true,
-  };
-  const earlier: BoardEntry[] = [];
-  const bandMap = new Map<string, WindowBand>();
-
-  const place = (entry: BoardEntry, date: string) => {
-    const index = daysBetween(today, date);
-    if (index < 0) earlier.push({ ...entry, placement: "earlier" });
-    else if (index < VISIBLE_DAYS) days[index].entries.push({ ...entry, placement: index === 0 ? "today" : "day" });
-    else board.later.entries.push({ ...entry, placement: "later", dateLabel: shortDate(date) });
   };
 
   for (const action of actions) {
@@ -231,6 +191,7 @@ export function buildWeekBoard(actions: ActionItem[], now: Date, timeZone: strin
     const entry: BoardEntry = {
       action,
       placement: "loose",
+      column: null,
       suggested: action.status === "suggested",
       completed,
       timeLabel: dueTime(action) || null,
@@ -245,50 +206,79 @@ export function buildWeekBoard(actions: ActionItem[], now: Date, timeZone: strin
     };
 
     if (action.status === "faded") board.faded.push({ ...entry, placement: "faded" });
-    else if (completed) days[0].entries.push({ ...entry, placement: "today" });
+    else if (completed || reminder) todayEntries.push(entry);
     else if (action.status === "done") continue;
-    else if (action.status === "snoozed" && !reminder) continue;
-    else if (action.status !== "open" && action.status !== "snoozed" && action.status !== "suggested") continue;
-    else if (reminder) days[0].entries.push({ ...entry, placement: "today" });
+    else if (action.status === "snoozed") continue;
+    else if (action.status !== "open" && action.status !== "suggested") continue;
     else if (!range) {
       if (entry.suggested) board.toConfirm.push({ ...entry, placement: "to-confirm" });
       else if (action.kind === "waiting-on") board.waiting.push({ ...entry, placement: "waiting" });
       else board.looseEnds.push({ ...entry, placement: "loose" });
-    } else if (action.due && "window" in action.due) {
-      if (range.end < today) earlier.push({ ...entry, placement: "earlier" });
-      else if (range.start > lastVisible)
-        board.later.entries.push({ ...entry, placement: "later", dateLabel: shortDate(range.start) });
-      else {
-        const from = Math.max(0, daysBetween(today, range.start));
-        const to = Math.min(VISIBLE_DAYS - 1, daysBetween(today, range.end));
-        const label = windowLabel(range, today);
-        const key = `${label}:${from}-${to}`;
-        const band = bandMap.get(key) ?? { key, label, from, to, entries: [] };
-        band.entries.push({ ...entry, placement: "window" });
-        bandMap.set(key, band);
-      }
-    } else if (action.kind === "waiting-on" && !entry.suggested && range.start < today) {
+    } else if (action.kind === "waiting-on" && !entry.suggested && range.start < today && !isWindow(action))
       // A follow-up date that has passed never nags: it stays with the others being waited on.
       board.waiting.push({ ...entry, placement: "waiting" });
-    } else place(entry, range.start);
+    else if (range.end < today) earlier.push({ ...entry, placement: "earlier" });
+    else dated.push({ entry, start: range.start, end: range.end, window: isWindow(action) });
+  }
+
+  const dates = [
+    ...earlier.map(() => today),
+    ...todayEntries.filter((entry) => !entry.completed).map(() => today),
+    ...dated.filter((item) => !item.window).map((item) => item.start),
+  ];
+  const windows = dated.filter((item) => item.window).map((item) => (item.start < today ? today : item.start));
+  const columns: TimeColumn[] = buildTimeColumns({ today, dates, windows, budget, target, capDays }).map((spec) => ({
+    ...spec,
+    earlier: [],
+    entries: [],
+  }));
+  const todayColumn = columns[0];
+  const laterColumn = columns[columns.length - 1];
+  board.columns = columns;
+  board.horizon = columns.at(-2)?.end ?? today;
+
+  const inColumn = (entry: BoardEntry, column: TimeColumn, date: string | null) => {
+    const placement = column.kind === "today" ? "today" : column.kind === "later" ? "later" : "day";
+    column.entries.push({ ...entry, placement, column: column.id, dateLabel: date ? entryDateLabel(date, column) : null });
+  };
+  for (const entry of todayEntries) inColumn(entry, todayColumn, null);
+
+  const bandMap = new Map<string, WindowBand>();
+  for (const item of dated) {
+    if (!item.window) {
+      const column = columns.find((candidate) => candidate.end !== null && item.start >= candidate.start && item.start <= candidate.end);
+      inColumn(item.entry, column ?? laterColumn, item.start);
+      continue;
+    }
+    const container = columns.find(
+      (candidate) => candidate.kind !== "later" && candidate.end !== null && candidate.start <= item.start && item.end <= candidate.end,
+    );
+    if (container) inColumn(item.entry, container, item.start);
+    else if (item.start > board.horizon) inColumn(item.entry, laterColumn, item.start);
+    else {
+      const overlaps = columns.flatMap((column, index) =>
+        item.start <= (column.end ?? "9999-12-31") && item.end >= column.start ? [index] : [],
+      );
+      const label = windowLabel({ start: item.start, end: item.end }, today);
+      const key = `${label}:${overlaps[0]}-${overlaps.at(-1)}`;
+      const band = bandMap.get(key) ?? { key, label, from: overlaps[0], to: overlaps.at(-1) as number, entries: [] };
+      band.entries.push({ ...item.entry, placement: "window", column: columns[overlaps[0]].id });
+      bandMap.set(key, band);
+    }
   }
 
   // Earlier items sit at the top of the Today column, grouped by the day they came from.
   const groups = new Map<string, BoardEntry[]>();
   for (const entry of earlier.sort(byStartThenTime)) {
-    const range = dueRange(entry.action.due);
-    const date = range?.end ?? today;
-    groups.set(date, [...(groups.get(date) ?? []), entry]);
+    const date = dueRange(entry.action.due)?.end ?? today;
+    groups.set(date, [...(groups.get(date) ?? []), { ...entry, column: todayColumn.id }]);
   }
-  days[0].earlier = [...groups.entries()]
+  todayColumn.earlier = [...groups.entries()]
     .sort(([left], [right]) => (left < right ? -1 : 1))
     .map(([date, entries]) => ({ date, label: earlierLabel(date, today), entries }));
 
-  for (const day of days) day.entries.sort(byTimeThenCreated).sort(openFirst);
-  board.later.entries.sort(byStartThenTime);
-  board.later.date = board.later.entries.length
-    ? (dueRange(board.later.entries[0].action.due)?.start ?? board.later.date)
-    : board.later.date;
+  for (const column of columns)
+    column.entries.sort(column.kind === "day" || column.kind === "today" ? byTimeThenCreated : byStartThenTime).sort(openFirst);
   board.bands = [...bandMap.values()].sort((left, right) => left.from - right.from || left.to - right.to);
   for (const band of board.bands) band.entries.sort(byTimeThenCreated);
   board.toConfirm.sort(byStartThenTime);
@@ -297,15 +287,14 @@ export function buildWeekBoard(actions: ActionItem[], now: Date, timeZone: strin
   board.faded.sort((left, right) => (left.action.touchedAt < right.action.touchedAt ? 1 : -1));
 
   const placed = [
-    ...days.flatMap((day) => [...day.entries, ...day.earlier.flatMap((group) => group.entries)]),
+    ...columns.flatMap((column) => [...column.entries, ...column.earlier.flatMap((group) => group.entries)]),
     ...board.bands.flatMap((band) => band.entries),
-    ...board.later.entries,
   ];
   const counts = (entry: BoardEntry) => !entry.completed && !entry.suggested;
-  const todayEntries = [...days[0].entries, ...days[0].earlier.flatMap((group) => group.entries)];
+  const todayCards = [...todayColumn.entries, ...todayColumn.earlier.flatMap((group) => group.entries)];
   board.summary = {
-    today: todayEntries.filter(counts).length,
-    comingUp: placed.filter(counts).length - todayEntries.filter(counts).length,
+    today: todayCards.filter(counts).length,
+    comingUp: placed.filter(counts).length - todayCards.filter(counts).length,
     // Waiting items given a follow-up day still count as waiting on others.
     waiting: board.waiting.length + placed.filter((entry) => counts(entry) && entry.action.kind === "waiting-on").length,
     toConfirm: board.toConfirm.length + placed.filter((entry) => entry.suggested).length,
@@ -316,17 +305,16 @@ export function buildWeekBoard(actions: ActionItem[], now: Date, timeZone: strin
   return board;
 }
 
-/** Every card in reading order: Today (earlier first), the days, Later, then the tray. */
+/** Every card in reading order: window bands, the columns (earlier first in Today), then the tray. */
 export type BoardGroup = { id: string; entries: BoardEntry[] };
 
 export function boardGroups(board: WeekBoard): BoardGroup[] {
   return [
     ...board.bands.map((band) => ({ id: `band:${band.key}`, entries: band.entries })),
-    ...board.days.map((day) => ({
-      id: `day:${day.date}`,
-      entries: [...day.earlier.flatMap((group) => group.entries), ...day.entries],
+    ...board.columns.map((column) => ({
+      id: column.id,
+      entries: [...column.earlier.flatMap((group) => group.entries), ...column.entries],
     })),
-    { id: "later", entries: board.later.entries },
     { id: "to-confirm", entries: board.toConfirm },
     { id: "loose", entries: board.looseEnds },
     { id: "waiting", entries: board.waiting },

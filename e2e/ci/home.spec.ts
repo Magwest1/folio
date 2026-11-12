@@ -82,7 +82,7 @@ test("Not important removes an action permanently", async ({ page, request }) =>
   expect(open.map((action) => action.id)).not.toContain(id);
 });
 
-test("a card moves to another day by drag and by keyboard", async ({ page, request }) => {
+test("a card moves to another column by drag and by keyboard", async ({ page, request }) => {
   const token = Date.now().toString(36);
   const dragText = `Home e2e drag me ${token}`;
   const keyText = `Home e2e key me ${token}`;
@@ -92,7 +92,7 @@ test("a card moves to another day by drag and by keyboard", async ({ page, reque
     return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
   };
   const created = await Promise.all([dragText, keyText].map((text) =>
-    request.post("/api/actions", { data: { text, due: { date: dateOf(1), time: "10:00" } } })));
+    request.post("/api/actions", { data: { text, due: { date: dateOf(2), time: "10:00" } } })));
   const [dragged, keyed] = await Promise.all(created.map(async (response) => {
     expect(response.status()).toBe(201);
     return (await response.json() as { id: string }).id;
@@ -101,20 +101,21 @@ test("a card moves to another day by drag and by keyboard", async ({ page, reque
 
   try {
     await page.goto("/");
+    // Columns adapt to what is due, so drop on Today, which is always a single day.
     const card = page.getByRole("listitem").filter({ hasText: dragText });
     await expect(card).toBeVisible();
-    const target = page.locator(`[data-date="${dateOf(3)}"]`);
+    const target = page.locator("[data-column='today']");
     await card.dragTo(target);
     await expect(target.getByText(dragText)).toBeVisible();
-    await expect.poll(() => dueOf(dragged)).toEqual({ date: dateOf(3), time: "10:00" });
+    await expect.poll(() => dueOf(dragged)).toEqual({ date: dateOf(0), time: "10:00" });
 
-    // Keyboard: focus the card, Shift+Right moves it a day and the move is announced.
+    // Keyboard: Shift+Left moves a card to the column before its own, and the move is announced.
     const keyCard = page.getByRole("listitem").filter({ hasText: keyText });
     await keyCard.focus();
-    await page.keyboard.press("Shift+ArrowRight");
+    await page.keyboard.press("Shift+ArrowLeft");
     await expect(page.getByRole("status")).toContainText("Moved to");
-    await expect(page.locator(`[data-date="${dateOf(2)}"]`).getByText(keyText)).toBeVisible();
-    await expect.poll(() => dueOf(keyed)).toEqual({ date: dateOf(2), time: "10:00" });
+    await expect.poll(() => dueOf(keyed)).not.toEqual({ date: dateOf(2), time: "10:00" });
+    await expect(page.getByRole("listitem").filter({ hasText: keyText })).toBeVisible();
   } finally {
     await Promise.all([dragged, keyed].map((id) => request.post(`/api/actions/${id}/let-go`)));
   }

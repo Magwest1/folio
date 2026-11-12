@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ActionItem } from "../../../domain/types.ts";
 import { useBoardDrag } from "../hooks/useBoardDrag.ts";
 import { useBoardLayout } from "../hooks/useBoardLayout.ts";
@@ -8,7 +8,7 @@ import type { HomeMutation } from "../model/action-mutations.ts";
 import { successorId } from "../model/board-focus.ts";
 import { homeGreeting } from "../model/home-greeting.ts";
 import { snoozePresets } from "../model/snooze-presets.ts";
-import { boardGroups } from "../model/week-board.ts";
+import { boardGroups, type WeekBoard } from "../model/week-board.ts";
 import type { BoardEnv } from "./BoardCard.tsx";
 import { HomeBoard } from "./HomeBoard.tsx";
 import { HomeCapture } from "./HomeCapture.tsx";
@@ -54,20 +54,15 @@ export function HomeView({
   timeZone,
 }: HomeViewProps) {
   const capture = useHomeCapture(bundleId);
-  const { actions, board, loaded, unavailable, toasts, run, refreshSoon, dismissToast, clock, timeZone: zone } =
-    useHomeActions({ bundleId, pollMs, now, timeZone });
+  const rootRef = useRef<HTMLDivElement>(null);
+  const { layout, budget } = useBoardLayout(rootRef);
+  const { actions, board: liveBoard, loaded, unavailable, toasts, run, refreshSoon, dismissToast, clock, timeZone: zone } =
+    useHomeActions({ bundleId, pollMs, now, timeZone, columns: budget });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [snoozeId, setSnoozeId] = useState<string | null>(null);
   const [cursorId, setCursorId] = useState<string | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
   const pendingFocusRef = useRef<PendingFocus | null>(null);
-  const layout = useBoardLayout(rootRef);
-
-  const cardIds = useMemo(
-    () => boardGroups(board).flatMap((group) => group.entries.map((entry) => entry.action.id)),
-    [board],
-  );
-  const tabbableId = cursorId && cardIds.includes(cursorId) ? cursorId : (cardIds[0] ?? null);
+  const [frozen, setFrozen] = useState<WeekBoard | null>(null);
 
   /**
    * After a card leaves the screen or a form closes, keep the keyboard where the
@@ -103,17 +98,32 @@ export function HomeView({
 
   const mutate = useCallback(
     (action: ActionItem, mutation: HomeMutation) => {
-      keepFocus(action.id, successorId(board, action.id));
+      keepFocus(action.id, successorId(liveBoard, action.id));
       void run(action.id, mutation);
     },
-    [board, keepFocus, run],
+    [keepFocus, liveBoard, run],
   );
 
   const drag = useBoardDrag({
-    today: board.today,
+    today: liveBoard.today,
     findAction,
     onMove: (action, move) => mutate(action, move.mutation),
   });
+
+  // The columns hold still while a card is in the air, even if a refresh arrives.
+  const board = drag.draggingId && frozen ? frozen : liveBoard;
+  const dragging = drag.draggingId !== null;
+  useEffect(() => {
+    setFrozen((current) => (dragging ? (current ?? liveBoard) : null));
+    // The board is captured once, when the drag starts.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragging]);
+
+  const cardIds = useMemo(
+    () => boardGroups(board).flatMap((group) => group.entries.map((entry) => entry.action.id)),
+    [board],
+  );
+  const tabbableId = cursorId && cardIds.includes(cursorId) ? cursorId : (cardIds[0] ?? null);
 
   const env: BoardEnv = useMemo(
     () => ({

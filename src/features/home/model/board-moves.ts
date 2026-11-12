@@ -1,12 +1,15 @@
 import type { ActionItem, ActionPatch } from "../../../domain/types.ts";
 import type { HomeMutation } from "./action-mutations.ts";
-import { addDays, daysBetween } from "./home-time.ts";
-import { dayAnnouncement, dueRange, VISIBLE_DAYS } from "./week-board.ts";
+import { dayAnnouncement } from "./time-buckets.ts";
+import { dueRange, type BoardEntry, type TimeColumn, type WeekBoard } from "./week-board.ts";
 
 /** Somewhere a card can be dropped. */
 export type DropTarget =
   | { type: "day"; date: string }
-  | { type: "later" }
+  /** A range, week or month: the card gets a window covering it. */
+  | { type: "span"; start: string; end: string; label: string }
+  /** The first day after the last column. */
+  | { type: "later"; date: string }
   | { type: "loose" }
   | { type: "let-go" };
 
@@ -23,6 +26,13 @@ function editMove(patch: ActionPatch, label: string): BoardMove {
   return { mutation: { type: "edit", patch, label } };
 }
 
+/** What dropping on a column means: a day for single days, a window for anything wider. */
+export function targetForColumn(column: TimeColumn): DropTarget {
+  if (column.kind === "today" || column.kind === "day") return { type: "day", date: column.start };
+  if (column.kind === "later" || !column.end) return { type: "later", date: column.start };
+  return { type: "span", start: column.start, end: column.end, label: column.fullLabel };
+}
+
 /**
  * Drop target to change. Returns null when nothing would change, so a card
  * dropped where it already is stays still and leaves no toast behind.
@@ -32,9 +42,13 @@ export function moveForDrop(action: ActionItem, target: DropTarget, today: strin
   if (target.type === "loose") {
     return action.due ? editMove({ due: null }, "Moved to loose ends.") : null;
   }
-  const date = target.type === "later" ? addDays(today, VISIBLE_DAYS) : target.date;
-  if (action.due && "date" in action.due && action.due.date === date) return null;
-  return editMove(dueOn(action, date), `Moved to ${dayAnnouncement(date, today)}.`);
+  if (target.type === "span") {
+    const due = action.due;
+    if (due && "window" in due && due.window.start === target.start && due.window.end === target.end) return null;
+    return editMove({ due: { window: { start: target.start, end: target.end } } }, `Moved to ${target.label}.`);
+  }
+  if (action.due && "date" in action.due && action.due.date === target.date) return null;
+  return editMove(dueOn(action, target.date), `Moved to ${dayAnnouncement(target.date, today)}.`);
 }
 
 /** The day a card sits on, or null when it has none. Windows count from their start. */
@@ -43,16 +57,25 @@ export function currentDate(action: ActionItem): string | null {
 }
 
 /**
- * Shift+Left and Shift+Right move a card one day; Shift+Down sends it to the
- * loose ends. Nothing moves before today, and cards without a day start at today.
+ * Shift+Left and Shift+Right move a card to the neighbouring column, by the same rules as
+ * a drop; Shift+Down sends it to the loose ends. Nothing moves before Today, and cards
+ * without a column, or from an earlier day, start at Today.
  */
-export function moveForKey(action: ActionItem, key: "earlier" | "later" | "loose", today: string): BoardMove | null {
+export function moveForKey(
+  entry: BoardEntry,
+  key: "earlier" | "later" | "loose",
+  board: WeekBoard,
+): BoardMove | null {
+  const { action } = entry;
+  const today = board.today;
   if (key === "loose") return moveForDrop(action, { type: "loose" }, today);
-  const current = currentDate(action);
+  const index = board.columns.findIndex((column) => column.id === entry.column);
+  const fresh = index === -1 || entry.placement === "earlier";
   if (key === "later") {
-    const next = current && daysBetween(today, current) >= 0 ? addDays(current, 1) : today;
-    return moveForDrop(action, { type: "day", date: next }, today);
+    if (fresh) return moveForDrop(action, { type: "day", date: today }, today);
+    const next = board.columns[index + 1];
+    return next ? moveForDrop(action, targetForColumn(next), today) : null;
   }
-  if (!current || daysBetween(today, current) <= 0) return null;
-  return moveForDrop(action, { type: "day", date: addDays(current, -1) }, today);
+  const previous = fresh ? undefined : board.columns[index - 1];
+  return previous ? moveForDrop(action, targetForColumn(previous), today) : null;
 }

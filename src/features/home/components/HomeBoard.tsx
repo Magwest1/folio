@@ -72,7 +72,7 @@ export function HomeBoard({ board, env, layout, moveFocus }: HomeBoardProps) {
       run();
     };
     if (command.type === "move") {
-      const move = live ? moveForKey(action, command.to, board.today) : null;
+      const move = live ? moveForKey(entry, command.to, board) : null;
       if (move) act(() => env.onMutate(action, move.mutation));
       return;
     }

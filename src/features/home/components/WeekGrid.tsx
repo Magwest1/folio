@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import type { BoardLayout } from "../hooks/useBoardLayout.ts";
-import type { DayColumn, WeekBoard, WindowBand } from "../model/week-board.ts";
+import { targetForColumn } from "../model/board-moves.ts";
+import type { BoardEntry, TimeColumn, WeekBoard, WindowBand } from "../model/week-board.ts";
 import { BoardCard, type BoardEnv } from "./BoardCard.tsx";
 
 type WeekGridProps = {
@@ -9,7 +10,7 @@ type WeekGridProps = {
   layout: BoardLayout;
 };
 
-function CardList({ entries, env, label }: { entries: DayColumn["entries"]; env: BoardEnv; label?: string }) {
+function CardList({ entries, env, label }: { entries: BoardEntry[]; env: BoardEnv; label?: string }) {
   if (!entries.length) return null;
   return (
     <ul className="week-card-list" role="list" aria-label={label}>
@@ -20,16 +21,18 @@ function CardList({ entries, env, label }: { entries: DayColumn["entries"]; env:
   );
 }
 
-function DayColumnView({ day, env }: { day: DayColumn; env: BoardEnv }) {
-  const headingId = `week-day-${day.date}`;
-  const filled = day.entries.length > 0 || day.earlier.length > 0;
-  const key = `day:${day.date}`;
+function ColumnView({ column, env }: { column: TimeColumn; env: BoardEnv }) {
+  const headingId = `week-col-${column.id.replace(/\W+/g, "-")}`;
+  const filled = column.entries.length > 0 || column.earlier.length > 0;
+  const key = `col:${column.id}`;
+  const crowded = column.earlier.length > 0 && column.entries.length > 0;
   return (
     <section
       className={[
         "week-day",
-        day.isToday && "is-today",
-        day.weekend && "is-weekend",
+        `is-${column.kind}`,
+        column.isToday && "is-today",
+        column.weekend && "is-weekend",
         !filled && "is-empty",
         env.drag.overKey === key && "is-over",
         env.drag.draggingId && "is-target",
@@ -37,32 +40,34 @@ function DayColumnView({ day, env }: { day: DayColumn; env: BoardEnv }) {
         .filter(Boolean)
         .join(" ")}
       aria-labelledby={headingId}
-      data-date={day.date}
-      {...env.drag.target(key, { type: "day", date: day.date })}
+      data-date={column.start}
+      data-end={column.end ?? ""}
+      data-column={column.kind}
+      {...env.drag.target(key, targetForColumn(column))}
     >
       <h2 id={headingId} className="week-day-title">
-        {day.isToday ? (
+        {column.isToday ? (
           <>
-            <span className="week-day-today">Today</span> <span className="week-day-date">{day.label}</span>
+            <span className="week-day-today">Today</span> <span className="week-day-date">{column.label}</span>
           </>
         ) : (
-          <span className="week-day-date">{day.label}</span>
+          <span className="week-day-date">{column.label}</span>
         )}
       </h2>
       <div className="week-day-body">
-        {day.earlier.map((group) => (
+        {column.earlier.map((group) => (
           <div key={group.date} className="week-earlier">
             <p className="week-earlier-label">{group.label}</p>
             <CardList entries={group.entries} env={env} label={`Due ${group.label}`} />
           </div>
         ))}
-        {day.earlier.length > 0 && day.entries.length > 0 ? (
+        {crowded ? (
           <div className="week-earlier is-today-group">
             <p className="week-earlier-label">today</p>
-            <CardList entries={day.entries} env={env} label="Due today" />
+            <CardList entries={column.entries} env={env} label="Due today" />
           </div>
         ) : (
-          <CardList entries={day.entries} env={env} />
+          <CardList entries={column.entries} env={env} />
         )}
       </div>
     </section>
@@ -87,43 +92,34 @@ function BandView({ band, env, layout }: { band: WindowBand; env: BoardEnv; layo
   );
 }
 
-/** Days across, windows as thin bands above them, and a narrow Later column at the end. */
+/** Wide columns for Today and single days, slimmer ones for the ranges that stand in for empty time. */
+function weight(column: TimeColumn): number {
+  if (column.isToday) return 1.5;
+  if (column.kind === "day") return 1;
+  if (column.kind === "later") return 0.7;
+  return column.entries.length > 0 ? 0.95 : 0.6;
+}
+
+/** Time columns across, windows as thin bands above them. In a narrow pane the same columns are rows. */
 export function WeekGrid({ board, env, layout }: WeekGridProps) {
-  const { later } = board;
+  const template: CSSProperties | undefined =
+    layout === "board"
+      ? { gridTemplateColumns: board.columns.map((column) => `minmax(0, ${weight(column)}fr)`).join(" ") }
+      : undefined;
   return (
     <div className="week-scroller">
       <div className="week-grid">
         {board.bands.length > 0 && (
-          <div className="week-bands">
+          <div className="week-bands" style={template}>
             {board.bands.map((band) => (
               <BandView key={band.key} band={band} env={env} layout={layout} />
             ))}
           </div>
         )}
-        <div className="week-columns">
-          {board.days.map((day) => (
-            <DayColumnView key={day.date} day={day} env={env} />
+        <div className="week-columns" style={template}>
+          {board.columns.map((column) => (
+            <ColumnView key={column.id} column={column} env={env} />
           ))}
-          <section
-            className={[
-              "week-day",
-              "week-later",
-              later.entries.length === 0 && "is-empty",
-              env.drag.overKey === "later" && "is-over",
-              env.drag.draggingId && "is-target",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            aria-labelledby="week-later-title"
-            {...env.drag.target("later", { type: "later" })}
-          >
-            <h2 id="week-later-title" className="week-day-title">
-              <span className="week-day-date">later</span>
-            </h2>
-            <div className="week-day-body">
-              <CardList entries={later.entries} env={env} />
-            </div>
-          </section>
         </div>
       </div>
     </div>

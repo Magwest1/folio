@@ -1,10 +1,25 @@
 import { describe, expect, it } from "vitest";
 import type { ActionItem } from "../../src/domain/types.ts";
 import { neighbourId, successorId } from "../../src/features/home/model/board-focus.ts";
-import { moveForDrop, moveForKey } from "../../src/features/home/model/board-moves.ts";
+import { moveForDrop, moveForKey, targetForColumn } from "../../src/features/home/model/board-moves.ts";
 import { homeGreeting, partOfDay } from "../../src/features/home/model/home-greeting.ts";
 import { toastLabel } from "../../src/features/home/model/action-mutations.ts";
-import { buildWeekBoard, dayAnnouncement, type BoardEntry } from "../../src/features/home/model/week-board.ts";
+import { addDays, daysBetween, weekdayIndex } from "../../src/features/home/model/home-time.ts";
+import {
+  buildTimeColumns,
+  columnBudget,
+  dayAnnouncement,
+  HORIZON_CAP_DAYS,
+  HORIZON_TARGET,
+  type ColumnSpec,
+} from "../../src/features/home/model/time-buckets.ts";
+import {
+  buildWeekBoard,
+  dueRange,
+  type BoardEntry,
+  type TimeColumn,
+  type WeekBoard,
+} from "../../src/features/home/model/week-board.ts";
 
 // Thursday 12 November 2026.
 const NOW = new Date("2026-11-12T10:00:00Z");
@@ -35,18 +50,31 @@ function action(overrides: Partial<ActionItem> = {}): ActionItem {
 const ids = (entries: BoardEntry[]) => entries.map((entry) => entry.action.id);
 const build = (actions: ActionItem[], now = NOW, zone = "UTC") => buildWeekBoard(actions, now, zone);
 
+/** Eight dated items across the first week: a busy week, so every day keeps its own column. */
+const busy = () =>
+  Array.from({ length: 8 }, (_, index) => action({ id: `fill${index}`, due: { date: addDays("2026-11-12", index % 7) } }));
+const real = (entries: BoardEntry[]) => ids(entries).filter((id) => !id.startsWith("fill"));
+const column = (board: WeekBoard, date: string) =>
+  board.columns.find((candidate) => date >= candidate.start && date <= (candidate.end ?? "9999-12-31")) as TimeColumn;
+const labels = (board: WeekBoard) => board.columns.map((candidate) => candidate.label);
+
 describe("week board columns", () => {
-  it("lays out today and the six days after it across a week boundary", () => {
-    const board = build([]);
-    expect(board.days.map((day) => day.label)).toEqual(["thu 12", "fri 13", "sat 14", "sun 15", "mon 16", "tue 17", "wed 18"]);
-    expect(board.days.map((day) => day.weekend)).toEqual([false, false, true, true, false, false, false]);
-    expect(board.days[0]).toMatchObject({ isToday: true, fullLabel: "Thursday 12" });
-    expect(board.later.date).toBe("2026-11-19");
+  it("lays out a busy week as today and six single days, across a week boundary", () => {
+    const board = build(busy());
+    expect(labels(board)).toEqual(["thu 12", "fri 13", "sat 14", "sun 15", "mon 16", "tue 17", "wed 18", "later"]);
+    expect(board.columns.map((candidate) => candidate.kind)).toEqual([
+      "today", "day", "day", "day", "day", "day", "day", "later",
+    ]);
+    expect(board.columns.map((candidate) => candidate.weekend)).toEqual([false, false, true, true, false, false, false, false]);
+    expect(board.columns[0]).toMatchObject({ isToday: true, fullLabel: "Thursday 12" });
+    expect(board.horizon).toBe("2026-11-18");
+    expect(board.columns.at(-1)?.start).toBe("2026-11-19");
   });
 
   it("puts the month on the first of a month", () => {
-    const board = build([], new Date("2026-11-27T10:00:00Z"));
-    expect(board.days.map((day) => day.label)).toEqual(["fri 27", "sat 28", "sun 29", "mon 30", "tue 1 dec", "wed 2", "thu 3"]);
+    const now = new Date("2026-11-27T10:00:00Z");
+    const fill = Array.from({ length: 8 }, (_, index) => action({ id: `fill${index}`, due: { date: addDays("2026-11-27", index % 7) } }));
+    expect(labels(build(fill, now))).toEqual(["fri 27", "sat 28", "sun 29", "mon 30", "tue 1 dec", "wed 2", "thu 3", "later"]);
   });
 
   it("places dated items in their column, with the time kept for the card", () => {
@@ -54,16 +82,17 @@ describe("week board columns", () => {
     const early = action({ id: "early", due: { date: "2026-11-12", time: "08:30" } });
     const friday = action({ id: "fri", due: { date: "2026-11-13" } });
     const wednesday = action({ id: "wed", due: { date: "2026-11-18" } });
-    const beyond = action({ id: "later", due: { date: "2026-12-24" } });
-    const board = build([beyond, wednesday, friday, today, early]);
-    expect(ids(board.days[0].entries)).toEqual(["early", "today"]);
-    expect(board.days[0].entries[0]).toMatchObject({ placement: "today", timeLabel: "08:30" });
-    expect(ids(board.days[1].entries)).toEqual(["fri"]);
-    expect(ids(board.days[6].entries)).toEqual(["wed"]);
-    expect(board.days[1].entries[0].placement).toBe("day");
-    expect(ids(board.later.entries)).toEqual(["later"]);
-    expect(board.later.entries[0]).toMatchObject({ placement: "later", dateLabel: "24 Dec" });
-    expect(board.later.date).toBe("2026-12-24");
+    const board = build([wednesday, friday, today, early, ...busy()]);
+    expect(real(board.columns[0].entries)).toEqual(["early", "today"]);
+    expect(board.columns[0].entries.find((entry) => entry.action.id === "early")).toMatchObject({
+      placement: "today",
+      timeLabel: "08:30",
+    });
+    expect(real(column(board, "2026-11-13").entries)).toEqual(["fri"]);
+    expect(real(column(board, "2026-11-18").entries)).toEqual(["wed"]);
+    expect(column(board, "2026-11-13").entries[0].placement).toBe("day");
+    // A single-day column never repeats the date.
+    expect(column(board, "2026-11-13").entries.every((entry) => entry.dateLabel === null)).toBe(true);
   });
 
   it("groups earlier items under a soft 'from' label at the top of today", () => {
@@ -72,28 +101,14 @@ describe("week board columns", () => {
     const old = action({ id: "old", due: { date: "2026-10-03" } });
     const ended = action({ id: "ended", due: { window: { start: "2026-11-02", end: "2026-11-08" } } });
     const board = build([yesterday, tuesday, old, ended]);
-    expect(board.days[0].earlier.map((group) => [group.label, ids(group.entries)])).toEqual([
+    expect(board.columns[0].earlier.map((group) => [group.label, ids(group.entries)])).toEqual([
       ["from 3 Oct", ["old"]],
       ["from Sun", ["ended"]],
       ["from Tue", ["tue"]],
       ["from yesterday", ["yesterday"]],
     ]);
-    expect(board.days[0].entries).toHaveLength(0);
-    expect(board.days[0].earlier.map((group) => group.label).join(" ")).not.toMatch(/overdue|late|behind/i);
-  });
-
-  it("spans windows across the matching columns and sends distant ones to Later", () => {
-    const thisWeek = action({ id: "this", due: { window: { start: "2026-11-09", end: "2026-11-15" } } });
-    const nextWeek = action({ id: "next", due: { window: { start: "2026-11-16", end: "2026-11-22" } } });
-    const farAway = action({ id: "far", due: { window: { start: "2026-11-30", end: "2026-12-04" } } });
-    const board = build([nextWeek, thisWeek, farAway]);
-    expect(board.bands.map((band) => [band.label, band.from, band.to, ids(band.entries)])).toEqual([
-      ["sometime this week", 0, 3, ["this"]],
-      ["sometime next week", 4, 6, ["next"]],
-    ]);
-    expect(ids(board.later.entries)).toEqual(["far"]);
-    // A window never also sits in a day column.
-    expect(board.days.flatMap((day) => day.entries)).toHaveLength(0);
+    expect(board.columns[0].entries).toHaveLength(0);
+    expect(board.columns[0].earlier.map((group) => group.label).join(" ")).not.toMatch(/overdue|late|behind/i);
   });
 
   it("keeps items that are not placed on a day in the tray", () => {
@@ -122,11 +137,11 @@ describe("week board columns", () => {
   it("shows a follow-up date for a waiting item on its day, and never nags about a past one", () => {
     const followUp = action({ id: "follow", kind: "waiting-on", person: "Ola", due: { date: "2026-11-14" } });
     const past = action({ id: "past", kind: "waiting-on", person: "Per", due: { date: "2026-11-01" } });
-    const board = build([followUp, past]);
-    expect(ids(board.days[2].entries)).toEqual(["follow"]);
-    expect(board.days[2].entries[0].action.kind).toBe("waiting-on");
+    const board = build([followUp, past, ...busy()]);
+    expect(real(column(board, "2026-11-14").entries)).toEqual(["follow"]);
+    expect(board.columns.flatMap((candidate) => candidate.entries).find((entry) => entry.action.id === "follow")?.action.kind).toBe("waiting-on");
     expect(ids(board.waiting)).toEqual(["past"]);
-    expect(board.days[0].earlier).toHaveLength(0);
+    expect(board.columns[0].earlier).toHaveLength(0);
   });
 
   it("places suggested items where their date says, and flags them", () => {
@@ -134,8 +149,8 @@ describe("week board columns", () => {
     const earlier = action({ id: "earlier", status: "suggested", origin: "suggested", due: { date: "2026-11-10" } });
     const undated = action({ id: "undated", status: "suggested", origin: "suggested" });
     const board = build([dated, earlier, undated]);
-    expect(board.days[1].entries[0]).toMatchObject({ suggested: true });
-    expect(ids(board.days[0].earlier[0].entries)).toEqual(["earlier"]);
+    expect(column(board, "2026-11-13").entries[0]).toMatchObject({ suggested: true });
+    expect(ids(board.columns[0].earlier[0].entries)).toEqual(["earlier"]);
     expect(ids(board.toConfirm)).toEqual(["undated"]);
     expect(board.summary).toMatchObject({ today: 0, comingUp: 0, toConfirm: 3 });
   });
@@ -147,9 +162,9 @@ describe("week board columns", () => {
     const doneYesterday = finish("2026-11-11T07:00:00Z");
     const open = action({ id: "open", due: { date: "2026-11-12" } });
     const board = build([doneToday, doneYesterday, open]);
-    expect(ids(board.days[0].entries)).toEqual(["open", doneToday.id]);
-    expect(board.days[0].entries[1].completed).toBe(true);
-    expect(board.days[0].earlier).toHaveLength(0);
+    expect(ids(board.columns[0].entries)).toEqual(["open", doneToday.id]);
+    expect(board.columns[0].entries[1].completed).toBe(true);
+    expect(board.columns[0].earlier).toHaveLength(0);
     // Quiet progress, not a score: finished items are not counted anywhere.
     expect(board.summary.today).toBe(1);
   });
@@ -169,8 +184,8 @@ describe("week board columns", () => {
       ],
     });
     const board = build([lapsedRaw, lapsedPresented, future, reopened]);
-    expect(ids(board.days[0].entries).sort()).toEqual(["presented", "raw"]);
-    expect(board.days[0].entries.every((entry) => entry.reminder)).toBe(true);
+    expect(ids(board.columns[0].entries).sort()).toEqual(["presented", "raw"]);
+    expect(board.columns[0].entries.every((entry) => entry.reminder)).toBe(true);
     expect(ids(board.looseEnds)).toEqual(["reopened"]);
   });
 
@@ -194,26 +209,27 @@ describe("week board columns", () => {
     const friday = action({ id: "fri", due: { date: "2026-11-13" } });
     const auckland = build([thursday, friday], lateEvening, "Pacific/Auckland");
     expect(auckland.today).toBe("2026-11-13");
-    expect(auckland.days[0].earlier[0].label).toBe("from yesterday");
-    expect(ids(auckland.days[0].entries)).toEqual(["fri"]);
+    expect(auckland.columns[0].earlier[0].label).toBe("from yesterday");
+    expect(ids(auckland.columns[0].entries)).toEqual(["fri"]);
     const la = build([thursday, friday], lateEvening, "America/Los_Angeles");
-    expect(ids(la.days[0].entries)).toEqual(["thu"]);
-    expect(ids(la.days[1].entries)).toEqual(["fri"]);
+    expect(ids(la.columns[0].entries)).toEqual(["thu"]);
+    expect(ids(column(la, "2026-11-13").entries)).toEqual(["fri"]);
   });
 
-  it("keeps seven consecutive days across a clock change", () => {
+  it("keeps consecutive days across a clock change", () => {
     // Clocks go back in Los Angeles on Sunday 1 November 2026, at 2:00.
     const lateSaturday = new Date("2026-11-01T06:30:00Z");
-    const board = build([action({ id: "after", due: { date: "2026-11-02" } })], lateSaturday, "America/Los_Angeles");
+    const fill = Array.from({ length: 8 }, (_, index) => action({ id: `fill${index}`, due: { date: addDays("2026-10-31", index % 7) } }));
+    const board = build([action({ id: "after", due: { date: "2026-11-02" } }), ...fill], lateSaturday, "America/Los_Angeles");
     expect(board.today).toBe("2026-10-31");
-    expect(board.days.map((day) => day.date)).toEqual([
+    expect(board.columns.slice(0, 7).map((candidate) => candidate.start)).toEqual([
       "2026-10-31", "2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06",
     ]);
-    expect(ids(board.days[2].entries)).toEqual(["after"]);
+    expect(real(column(board, "2026-11-02").entries)).toEqual(["after"]);
     // Oslo goes back on 25 October: the evening before is still Saturday the 24th.
     const oslo = build([], new Date("2026-10-24T21:30:00Z"), "Europe/Oslo");
     expect(oslo.today).toBe("2026-10-24");
-    expect(oslo.days.map((day) => day.date).slice(0, 3)).toEqual(["2026-10-24", "2026-10-25", "2026-10-26"]);
+    expect(oslo.columns[1].start).toBe("2026-10-25");
     expect(build([], new Date("2026-10-24T22:30:00Z"), "Europe/Oslo").today).toBe("2026-10-25");
   });
 
@@ -226,6 +242,155 @@ describe("week board columns", () => {
     expect(build(quiet).empty).toBe(true);
     expect(build([action()]).empty).toBe(false);
     expect(build([action({ status: "suggested" })]).empty).toBe(false);
+  });
+});
+
+describe("adaptive time columns", () => {
+  const cols = (dates: string[], budget = 8, today = "2026-11-12") =>
+    buildTimeColumns({ today, dates, budget });
+  const spans = (columns: ColumnSpec[]) => columns.map((candidate) => `${candidate.kind}:${candidate.label}`);
+
+  it("keeps an empty board small and airy, with Today and Later at the ends", () => {
+    const columns = cols([]);
+    expect(spans(columns)).toEqual(["today:thu 12", "range:fri–sun", "range:mon–wed", "later:later"]);
+    expect(columns[0].isToday).toBe(true);
+    expect(columns.at(-1)).toMatchObject({ kind: "later", start: "2026-11-19", end: null });
+    expect(build([]).empty).toBe(true);
+  });
+
+  it("zooms out over a sparse week until the items fit, instead of hiding December in Later", () => {
+    const dates = ["2026-11-12", "2026-11-18", "2026-11-26", "2026-12-04", "2026-12-24"];
+    const columns = cols(dates);
+    // Everything up to the last item is covered by a column; Later starts after it.
+    expect(columns.at(-2)?.end).toBe("2026-12-31");
+    expect(columns.at(-1)?.start).toBe("2027-01-01");
+    expect(columns.length).toBeLessThanOrEqual(8);
+    // Day columns give way to weeks and wider ranges to the right.
+    const kinds = columns.map((candidate) => candidate.kind);
+    expect(kinds[0]).toBe("today");
+    expect(kinds).toContain("week");
+    // Contiguous with no gaps and no overlaps.
+    for (let index = 1; index < columns.length; index += 1)
+      expect(columns[index].start).toBe(addDays(columns[index - 1].end as string, 1));
+    const board = build(dates.map((date, index) => action({ id: `d${index}`, due: { date } })));
+    expect(board.looseEnds).toHaveLength(0);
+    expect(ids(board.columns.at(-1)?.entries ?? [])).toEqual([]);
+    expect(board.columns.flatMap((candidate) => candidate.entries)).toHaveLength(5);
+    expect(board.horizon).toBe("2026-12-31");
+  });
+
+  it("labels what it zooms out to in calm lowercase", () => {
+    const board = build([action({ id: "far", due: { date: "2027-02-10" } })]);
+    const named = labels(board);
+    expect(named).toContain("next week");
+    expect(named.every((label) => label === label.toLowerCase())).toBe(true);
+    expect(board.columns.some((candidate) => candidate.kind === "month" && candidate.label === "january 2027")).toBe(false);
+    expect(column(board, "2027-02-10").kind).not.toBe("later");
+  });
+
+  it("does not extend past the last item or the cap", () => {
+    expect(cols(["2026-11-12", "2026-11-13"]).at(-2)?.end).toBe("2026-11-18");
+    const far = cols(["2026-11-12", "2028-01-01"]);
+    expect(far.at(-1)?.start <= "2027-06-01").toBe(true);
+    expect(HORIZON_TARGET).toBe(8);
+    expect(HORIZON_CAP_DAYS).toBe(183);
+  });
+
+  it("keeps every day when the week is busy", () => {
+    const dates = ["2026-11-12", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15", "2026-11-16", "2026-11-17", "2026-11-18"];
+    expect(spans(cols(dates))).toEqual([
+      "today:thu 12", "day:fri 13", "day:sat 14", "day:sun 15", "day:mon 16", "day:tue 17", "day:wed 18", "later:later",
+    ]);
+  });
+
+  it("collapses runs of empty days into one slim range, inside a single Monday to Sunday week", () => {
+    const dates = ["2026-11-12", "2026-11-13", "2026-11-18", "2026-11-18", "2026-11-18", "2026-11-18", "2026-11-18", "2026-11-18"];
+    const columns = cols(dates);
+    expect(spans(columns)).toEqual([
+      "today:thu 12", "day:fri 13", "range:sat–sun", "range:mon–tue", "day:wed 18", "later:later",
+    ]);
+  });
+
+  it("keeps ranges on calendar boundaries across a month end", () => {
+    const columns = cols(["2026-11-30", "2026-12-02", "2026-12-20", "2027-01-05"]);
+    for (const column of columns.filter((candidate) => candidate.kind === "week")) {
+      expect(weekdayIndex(column.start)).toBe(0);
+      expect(daysBetween(column.start, column.end as string)).toBe(6);
+    }
+    for (const column of columns.filter((candidate) => candidate.kind === "month")) {
+      expect(column.start.endsWith("-01")).toBe(true);
+      expect(addDays(column.end as string, 1).endsWith("-01")).toBe(true);
+    }
+  });
+
+  it("crosses a year end and names the year", () => {
+    const columns = cols(["2026-12-30", "2027-01-20", "2027-03-10"], 8, "2026-12-28");
+    expect(columns.at(-2)?.end).toBe("2027-03-31");
+    expect(columns.some((column) => column.kind === "month" && column.label === "march 2027")).toBe(true);
+    expect(columns.some((column) => column.start === "2027-01-01" || (column.start < "2027-01-01" && (column.end ?? "") >= "2027-01-01"))).toBe(true);
+    for (let index = 1; index < columns.length; index += 1)
+      expect(columns[index].start).toBe(addDays(columns[index - 1].end as string, 1));
+  });
+
+  it("builds the same columns across a clock change, from dates alone", () => {
+    const lateSaturday = new Date("2026-11-01T06:30:00Z");
+    const first = build([action({ due: { date: "2026-11-20" } })], lateSaturday, "America/Los_Angeles").columns.map((c) => c.id);
+    const again = build([action({ due: { date: "2026-11-20" } })], new Date("2026-11-01T05:30:00Z"), "America/Los_Angeles").columns.map((c) => c.id);
+    expect(first).toEqual(again);
+    expect(first[0]).toBe("today:2026-10-31");
+  });
+
+  it("respects the column budget at every width tier", () => {
+    const dates = ["2026-11-12", "2026-11-14", "2026-11-19", "2026-11-26", "2026-12-04", "2026-12-24", "2027-02-02"];
+    const tiers = [[1400, 8], [1200, 8], [1100, 7], [1000, 6], [850, 5], [700, 4], [500, 8]] as const;
+    for (const [width, budget] of tiers) {
+      expect(columnBudget(width)).toBe(budget);
+      const columns = cols(dates, budget);
+      expect(columns.length).toBeLessThanOrEqual(budget);
+      expect(columns[0].kind).toBe("today");
+      expect(columns.at(-1)?.kind).toBe("later");
+    }
+    const dense = ["2026-11-12", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15", "2026-11-16", "2026-11-17", "2026-11-18"];
+    for (const budget of [4, 5, 6, 7, 8]) expect(cols(dense, budget).length).toBeLessThanOrEqual(budget);
+  });
+
+  it("puts a window in the bucket that contains it, and falls back to a band", () => {
+    const nextWeek = action({ id: "inside", due: { window: { start: "2026-11-16", end: "2026-11-22" } } });
+    const thisWeek = action({ id: "crossing", due: { window: { start: "2026-11-09", end: "2026-11-15" } } });
+    const far = action({ id: "far", due: { window: { start: "2027-03-01", end: "2027-03-05" } } });
+    const board = build([...busy(), nextWeek, thisWeek, far]);
+    // In a busy week the days stay single, so no bucket holds a whole window: bands.
+    expect(board.bands.map((band) => [band.label, ids(band.entries)])).toEqual([
+      ["sometime this week", ["crossing"]],
+      ["sometime next week", ["inside"]],
+    ]);
+    expect(ids(board.columns.at(-1)?.entries ?? [])).toEqual(["far"]);
+
+    // On a sparse board a week column contains the window, and the band disappears.
+    const sparse = buildWeekBoard([nextWeek, action({ id: "later one", due: { date: "2026-12-10" } })], NOW, "UTC", 6);
+    const home = sparse.columns.find((candidate) => candidate.entries.some((entry) => entry.action.id === "inside"));
+    expect(home).toBeDefined();
+    expect(home?.start <= "2026-11-16" && "2026-11-22" <= (home?.end ?? "")).toBe(true);
+    expect(sparse.bands).toHaveLength(0);
+  });
+
+  it("sorts cards by date inside a wide column and shows their date, not in single days", () => {
+    const board = build([
+      action({ id: "b", due: { date: "2026-12-03" } }),
+      action({ id: "a", due: { date: "2026-11-24" } }),
+      action({ id: "c", due: { date: "2026-12-20" } }),
+    ]);
+    for (const candidate of board.columns.slice(1, -1)) {
+      const starts = candidate.entries.map((entry) => dueRange(entry.action.due)?.start ?? "");
+      expect([...starts].sort()).toEqual(starts);
+      for (const entry of candidate.entries) {
+        if (candidate.kind === "day") expect(entry.dateLabel).toBeNull();
+        else expect(entry.dateLabel).toMatch(/^([a-z]{3} \d{1,2}|\d{1,2} [a-z]{3})$/);
+      }
+    }
+    // Beyond a month wide, dates read "3 dec"; closer in, "fri 20".
+    const far = build([action({ id: "far", due: { date: "2027-02-10" } })]);
+    expect(far.columns.flatMap((candidate) => candidate.entries)[0].dateLabel).toMatch(/^(\d{1,2} [a-z]{3}|[a-z]{3} \d{1,2})$/);
   });
 });
 
@@ -268,6 +433,7 @@ describe("greeting and summary", () => {
 
 describe("drop target to patch", () => {
   const today = "2026-11-12";
+  const next = { type: "span", start: "2026-11-16", end: "2026-11-22", label: "next week" } as const;
 
   it("sets the date on a day and keeps the time of day", () => {
     const timed = action({ due: { date: "2026-11-12", time: "14:00" } });
@@ -291,6 +457,33 @@ describe("drop target to patch", () => {
     });
   });
 
+  it("gives a card the window of a range, week or month column it is dropped on", () => {
+    expect(moveForDrop(action({ due: { date: "2026-11-13", time: "09:00" } }), next, today)).toEqual({
+      mutation: {
+        type: "edit",
+        patch: { due: { window: { start: "2026-11-16", end: "2026-11-22" } } },
+        label: "Moved to next week.",
+      },
+    });
+    const december = { type: "span", start: "2026-12-01", end: "2026-12-31", label: "December" } as const;
+    expect(moveForDrop(action(), december, today)?.mutation).toMatchObject({
+      patch: { due: { window: { start: "2026-12-01", end: "2026-12-31" } } },
+      label: "Moved to December.",
+    });
+    // Already there: nothing to do.
+    const there = action({ due: { window: { start: "2026-11-16", end: "2026-11-22" } } });
+    expect(moveForDrop(there, next, today)).toBeNull();
+  });
+
+  it("derives the target from the column kind", () => {
+    const board = build([action({ due: { date: "2026-11-20" } })], NOW, "UTC", 6);
+    const kinds = Object.fromEntries(board.columns.map((candidate) => [candidate.kind, targetForColumn(candidate)]));
+    expect(kinds.today).toEqual({ type: "day", date: "2026-11-12" });
+    expect(kinds.later).toEqual({ type: "later", date: addDays(board.horizon, 1) });
+    const wide = board.columns.find((candidate) => candidate.kind === "week" || candidate.kind === "range") as TimeColumn;
+    expect(targetForColumn(wide)).toMatchObject({ type: "span", start: wide.start, end: wide.end, label: wide.fullLabel });
+  });
+
   it("sets a follow-up date on a waiting item without changing its kind", () => {
     const waiting = action({ kind: "waiting-on", person: "Ola" });
     const mutation = moveForDrop(waiting, { type: "day", date: "2026-11-14" }, today)?.mutation;
@@ -298,13 +491,13 @@ describe("drop target to patch", () => {
     expect(mutation?.type === "edit" ? Object.keys(mutation.patch) : []).toEqual(["due"]);
   });
 
-  it("moves Later to the day after the last visible column", () => {
-    expect(moveForDrop(action(), { type: "later" }, today)?.mutation).toMatchObject({
+  it("moves Later to the day after the last column", () => {
+    expect(moveForDrop(action(), { type: "later", date: "2026-11-19" }, today)?.mutation).toMatchObject({
       patch: { due: { date: "2026-11-19" } },
       label: "Moved to Thursday 19 Nov.",
     });
     const alreadyThere = action({ due: { date: "2026-11-19" } });
-    expect(moveForDrop(alreadyThere, { type: "later" }, today)).toBeNull();
+    expect(moveForDrop(alreadyThere, { type: "later", date: "2026-11-19" }, today)).toBeNull();
   });
 
   it("clears the date on the loose-ends tray, only if there is one", () => {
@@ -332,39 +525,88 @@ describe("drop target to patch", () => {
     expect(dayAnnouncement("2026-11-12", today)).toBe("today");
     expect(dayAnnouncement("2026-11-13", today)).toBe("Friday 13");
     expect(dayAnnouncement("2026-12-24", today)).toBe("Thursday 24 Dec");
+    const board = build([action({ due: { date: "2026-12-10" } })], NOW, "UTC", 6);
+    expect(board.columns.map((candidate) => candidate.fullLabel)).toContain("next week");
+    expect(board.columns.every((candidate) => candidate.fullLabel.length > 0)).toBe(true);
   });
 });
 
 describe("keyboard moves", () => {
-  const today = "2026-11-12";
+  const dense = busy();
+  const boardWith = (...extra: ActionItem[]) => build([...extra, ...dense]);
+  const entryOf = (board: WeekBoard, id: string) =>
+    [...board.columns.flatMap((candidate) => [...candidate.entries, ...candidate.earlier.flatMap((group) => group.entries)]), ...board.looseEnds, ...board.bands.flatMap((band) => band.entries)].find(
+      (entry) => entry.action.id === id,
+    ) as BoardEntry;
 
-  it("moves a card one day later or earlier, never before today", () => {
-    const friday = action({ due: { date: "2026-11-13", time: "09:00" } });
-    expect(moveForKey(friday, "later", today)?.mutation).toMatchObject({
+  it("moves a card to the neighbouring day column, never before today", () => {
+    const friday = action({ id: "friday", due: { date: "2026-11-13", time: "09:00" } });
+    const board = boardWith(friday);
+    expect(moveForKey(entryOf(board, "friday"), "later", board)?.mutation).toMatchObject({
       patch: { due: { date: "2026-11-14", time: "09:00" } },
       label: "Moved to Saturday 14.",
     });
-    expect(moveForKey(friday, "earlier", today)?.mutation).toMatchObject({
+    expect(moveForKey(entryOf(board, "friday"), "earlier", board)?.mutation).toMatchObject({
       patch: { due: { date: "2026-11-12", time: "09:00" } },
       label: "Moved to today.",
     });
-    expect(moveForKey(action({ due: { date: "2026-11-12" } }), "earlier", today)).toBeNull();
-    expect(moveForKey(action(), "earlier", today)).toBeNull();
+    const today = action({ id: "today", due: { date: "2026-11-12" } });
+    const withToday = boardWith(today);
+    expect(moveForKey(entryOf(withToday, "today"), "earlier", withToday)).toBeNull();
+  });
+
+  it("moves into a week or month column with a window and names the bucket", () => {
+    const friday = action({ id: "friday", due: { date: "2026-11-13" } });
+    const sparse = buildWeekBoard([friday, action({ due: { date: "2026-12-10" } })], NOW, "UTC", 6);
+    const entry = entryOf(sparse, "friday");
+    const column = sparse.columns.find((candidate) => candidate.id === entry.column) as TimeColumn;
+    const following = sparse.columns[sparse.columns.indexOf(column) + 1];
+    const move = moveForKey(entry, "later", sparse);
+    expect(move?.mutation).toMatchObject({ type: "edit", label: `Moved to ${following.fullLabel}.` });
+    expect(following.kind === "day" || following.kind === "today" ? "date" : "window").toBe(
+      move?.mutation.type === "edit" && move.mutation.patch.due && "window" in move.mutation.patch.due ? "window" : "date",
+    );
+    // The window of a wide column is its own bounds.
+    const wideIndex = sparse.columns.findIndex((candidate) => candidate.kind === "week" || candidate.kind === "range");
+    const before = sparse.columns[wideIndex - 1];
+    const stuck = { ...entry, column: before.id };
+    expect(moveForKey(stuck, "later", sparse)?.mutation).toMatchObject({
+      patch: { due: { window: { start: sparse.columns[wideIndex].start, end: sparse.columns[wideIndex].end } } },
+    });
+  });
+
+  it("steps from the last column into Later with the first day after the horizon", () => {
+    const wednesday = action({ id: "wed", due: { date: "2026-11-18" } });
+    const board = boardWith(wednesday);
+    expect(moveForKey(entryOf(board, "wed"), "later", board)?.mutation).toMatchObject({
+      patch: { due: { date: "2026-11-19" } },
+      label: "Moved to Thursday 19 Nov.",
+    });
+    const later = action({ id: "later", due: { date: "2026-12-24" } });
+    const withLater = boardWith(later);
+    expect(moveForKey(entryOf(withLater, "later"), "later", withLater)).toBeNull();
+    expect(moveForKey(entryOf(withLater, "later"), "earlier", withLater)?.mutation).toMatchObject({
+      patch: { due: { date: "2026-11-18" } },
+    });
   });
 
   it("starts a loose end or an earlier item at today", () => {
-    expect(moveForKey(action(), "later", today)?.mutation).toMatchObject({ patch: { due: { date: "2026-11-12" } } });
-    expect(moveForKey(action({ due: { date: "2026-11-09" } }), "later", today)?.mutation).toMatchObject({
-      patch: { due: { date: "2026-11-12" } },
-    });
+    const loose = action({ id: "loose" });
+    const old = action({ id: "old", due: { date: "2026-11-09" } });
+    const board = boardWith(loose, old);
+    expect(moveForKey(entryOf(board, "loose"), "later", board)?.mutation).toMatchObject({ patch: { due: { date: "2026-11-12" } } });
+    expect(moveForKey(entryOf(board, "old"), "later", board)?.mutation).toMatchObject({ patch: { due: { date: "2026-11-12" } } });
+    expect(moveForKey(entryOf(board, "loose"), "earlier", board)).toBeNull();
   });
 
   it("sends a card to the loose ends with Shift+Down", () => {
-    expect(moveForKey(action({ due: { date: "2026-11-13" } }), "loose", today)?.mutation).toMatchObject({
+    const friday = action({ id: "friday", due: { date: "2026-11-13" } });
+    const board = boardWith(friday, action({ id: "plain" }));
+    expect(moveForKey(entryOf(board, "friday"), "loose", board)?.mutation).toMatchObject({
       patch: { due: null },
       label: "Moved to loose ends.",
     });
-    expect(moveForKey(action(), "loose", today)).toBeNull();
+    expect(moveForKey(entryOf(board, "plain"), "loose", board)).toBeNull();
   });
 });
 

@@ -187,7 +187,7 @@
 }
 
 .week-grid {
-  min-width: 1080px;
+  min-width: 0;
   display: grid;
   gap: 10px;
 }
@@ -195,12 +195,14 @@
 .week-bands,
 .week-columns {
   display: grid;
-  grid-template-columns: minmax(190px, 1.6fr) repeat(6, minmax(128px, 1fr)) minmax(120px, 0.7fr);
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 10px;
 }
 
 .week-bands {
   grid-auto-flow: row;
+  grid-auto-columns: auto;
 }
 
 .week-band {
@@ -853,6 +855,7 @@
 
 .home-view[data-layout='agenda'] .week-bands,
 .home-view[data-layout='agenda'] .week-columns {
+  grid-auto-flow: row;
   grid-template-columns: minmax(0, 1fr);
   gap: 6px;
 }
@@ -866,7 +869,7 @@
 }
 
 .home-view[data-layout='agenda'] .week-day-title {
-  flex: 0 0 72px;
+  flex: 0 0 84px;
   padding: 3px 0 0 2px;
   flex-direction: column;
   gap: 1px;
