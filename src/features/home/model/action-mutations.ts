@@ -12,7 +12,13 @@ export type HomeMutation =
   | { type: "edit"; patch: ActionPatch; label?: string }
   | { type: "remove-auto-added" }
   /** "Still relevant?" answered yes: only resets the quiet clock. */
-  | { type: "keep" };
+  | { type: "keep" }
+  /** "Looks done?" answered yes. */
+  | { type: "accept-completion" }
+  /** "Looks done?" answered not yet: that evidence is not suggested again. */
+  | { type: "dismiss-completion" }
+  /** Takes back something Folio did on its own, such as marking an item done. */
+  | { type: "undo-auto" };
 
 export const TRANSITION_FOR: Record<Exclude<HomeMutation["type"], "edit">, ActionTransition> = {
   accept: "confirm",
@@ -23,11 +29,18 @@ export const TRANSITION_FOR: Record<Exclude<HomeMutation["type"], "edit">, Actio
   "not-an-action": "reject",
   "remove-auto-added": "reject",
   keep: "keep",
+  "accept-completion": "completion/accept",
+  "dismiss-completion": "completion/dismiss",
+  "undo-auto": "undo",
 };
 
-const STATUS_FOR: Record<Exclude<HomeMutation["type"], "edit" | "snooze" | "remove-auto-added" | "keep">, ActionStatus> = {
+const STATUS_FOR: Record<
+  Exclude<HomeMutation["type"], "edit" | "snooze" | "remove-auto-added" | "keep" | "dismiss-completion" | "undo-auto">,
+  ActionStatus
+> = {
   accept: "open",
   done: "done",
+  "accept-completion": "done",
   reopen: "open",
   "not-important": "let-go",
   "not-an-action": "rejected",
@@ -54,6 +67,12 @@ export function toastLabel(mutation: HomeMutation): string {
       return "Removed. It won't come back.";
     case "keep":
       return "Kept. I won't ask again for a while.";
+    case "accept-completion":
+      return "Marked done.";
+    case "dismiss-completion":
+      return "Okay. I won't suggest that again.";
+    case "undo-auto":
+      return "Back on your list.";
   }
 }
 
@@ -61,6 +80,18 @@ export function toastLabel(mutation: HomeMutation): string {
 export function applyOptimistic(action: ActionItem, mutation: HomeMutation, now: Date): ActionItem {
   const at = now.toISOString();
   if (mutation.type === "keep") return { ...action, touchedAt: at };
+  if (mutation.type === "dismiss-completion") return { ...action, completionSuggestion: null };
+  if (mutation.type === "undo-auto") {
+    const last = action.history.at(-1);
+    return {
+      ...action,
+      status: last?.from ?? "open",
+      completion: null,
+      updatedAt: at,
+      touchedAt: at,
+      history: action.history.slice(0, -1),
+    };
+  }
   if (mutation.type === "edit")
     return { ...action, ...mutation.patch, editedByUser: true, updatedAt: at, touchedAt: at };
   const to: ActionStatus =
@@ -73,6 +104,7 @@ export function applyOptimistic(action: ActionItem, mutation: HomeMutation, now:
     ...action,
     status: to,
     snoozedUntil: mutation.type === "snooze" ? mutation.until : null,
+    completionSuggestion: null,
     updatedAt: at,
     touchedAt: at,
     history: [...action.history, { at, from: action.status, to, by: "user" }],

@@ -14,6 +14,9 @@ const TRANSITIONS = {
   'let-go': (store, id) => store.letGo(id),
   reject: (store, id) => store.reject(id),
   undo: (store, id) => store.undo(id),
+  // "Looks done?" answers. Undoing a system change (auto-completion, merged repeat) goes through /undo.
+  'completion/accept': (store, id) => store.acceptCompletion(id),
+  'completion/dismiss': (store, id) => store.dismissCompletion(id),
 }
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 

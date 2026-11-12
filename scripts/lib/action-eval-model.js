@@ -69,7 +69,7 @@ export function routingMetrics(records) {
   }
 }
 
-function startMlx() {
+export function startMlx() {
   const modelRoot = process.env.FOLIO_MODEL_ROOT || path.join(os.homedir(), 'Library', 'Application Support', 'Folio', 'models')
   const helper = helperPath(projectRoot)
   if (!existsSync(helper)) {

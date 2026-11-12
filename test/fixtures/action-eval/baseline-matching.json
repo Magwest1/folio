@@ -1,0 +1,163 @@
+{
+  "stage": "matching",
+  "date": "2026-11-12T19:20:10.405Z",
+  "metrics": {
+    "scenarios": 40,
+    "matching": {
+      "repeats": {
+        "tp": 7,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "completions": {
+        "tp": 13,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1,
+        "recall": 0.9286,
+        "f1": 0.963
+      },
+      "autoCompletion": {
+        "predicted": 11,
+        "correct": 11,
+        "expected": 12,
+        "found": 11,
+        "precision": 1,
+        "recall": 0.9167
+      },
+      "wrongResurrections": 0,
+      "created": {
+        "expected": 6,
+        "found": 6,
+        "rate": 1
+      }
+    },
+    "byLanguage": {
+      "en": {
+        "scenarios": 27,
+        "errors": 1
+      },
+      "no": {
+        "scenarios": 13,
+        "errors": 0
+      }
+    },
+    "byTag": {
+      "ambiguous": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "auto": {
+        "scenarios": 10,
+        "errors": 0
+      },
+      "chatty": {
+        "scenarios": 3,
+        "errors": 0
+      },
+      "checkbox": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "completion": {
+        "scenarios": 15,
+        "errors": 1
+      },
+      "different-item": {
+        "scenarios": 4,
+        "errors": 0
+      },
+      "different-person": {
+        "scenarios": 2,
+        "errors": 0
+      },
+      "dismissed": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "due": {
+        "scenarios": 2,
+        "errors": 0
+      },
+      "due-conflict": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "future-vs-past": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "hard-negative": {
+        "scenarios": 22,
+        "errors": 0
+      },
+      "letgo": {
+        "scenarios": 3,
+        "errors": 0
+      },
+      "multi": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "near-miss": {
+        "scenarios": 2,
+        "errors": 0
+      },
+      "negated": {
+        "scenarios": 2,
+        "errors": 0
+      },
+      "other-person": {
+        "scenarios": 2,
+        "errors": 0
+      },
+      "paraphrase": {
+        "scenarios": 1,
+        "errors": 1
+      },
+      "partial": {
+        "scenarios": 2,
+        "errors": 0
+      },
+      "person": {
+        "scenarios": 6,
+        "errors": 0
+      },
+      "recurring": {
+        "scenarios": 3,
+        "errors": 0
+      },
+      "rejected": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "repeat": {
+        "scenarios": 6,
+        "errors": 0
+      },
+      "same-note": {
+        "scenarios": 2,
+        "errors": 0
+      },
+      "similar-text": {
+        "scenarios": 2,
+        "errors": 0
+      },
+      "suggestion": {
+        "scenarios": 2,
+        "errors": 1
+      },
+      "two-open": {
+        "scenarios": 3,
+        "errors": 0
+      },
+      "undo": {
+        "scenarios": 1,
+        "errors": 0
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@ import fs from 'node:fs/promises'
 
 import { PROMPT_VERSION, extractActions } from './extraction/pipeline.js'
 import { mlxEmbed, mlxGenerate } from './extraction/mlx-adapters.js'
+import { MATCHING_VERSION, applyNoteMatching, askWith, createVectorCache, matchCompletions } from './matching/apply.js'
 
 const MAX_CONSECUTIVE_ERRORS = 3
 const SKIPPED = ['/todo-list.md', '/references/']
@@ -22,7 +23,7 @@ export function createActionService(runtime, options = {}) {
   const debounceTimers = new Map()
   const versions = new Map()
   const sleepers = new Set()
-  const counters = { processed: 0, skipped: 0, failed: 0, itemsAdded: 0 }
+  const counters = { processed: 0, skipped: 0, failed: 0, itemsAdded: 0, repeatsMerged: 0, autoCompleted: 0, completionsSuggested: 0 }
   let running = null
   let backfill = null
   let backfillTimer = null
@@ -30,6 +31,7 @@ export function createActionService(runtime, options = {}) {
   let warnedMissingStore = false
   let lastError = null
   let modelCache = { at: 0, value: null }
+  let vectorCache = null
 
   function sleep(ms) {
     return new Promise((resolve) => {
@@ -89,10 +91,15 @@ export function createActionService(runtime, options = {}) {
     } catch { return null }
   }
 
-  const isCurrent = (id, hash) => {
+  // Matching (#21) needs the store methods; the older in-memory stores some tests inject do not have them.
+  const matchable = () => typeof runtime.actionStore.mergeRepeat === 'function' && typeof runtime.actionStore.openForMatching === 'function'
+  const extractionCurrent = (id, hash) => {
     const state = runtime.actionStore.noteState(id)
     return Boolean(state && state.contentHash === hash && state.promptVersion === PROMPT_VERSION)
   }
+  const matchingCurrent = (id) => !matchable() || runtime.actionStore.noteState(id)?.matchingVersion === MATCHING_VERSION
+  const isCurrent = (id, hash) => extractionCurrent(id, hash) && matchingCurrent(id)
+  const referenceTime = (note) => (note.modifiedAt.getTime() < Date.now() ? note.modifiedAt : new Date())
 
   // Resolves to 'done', 'skip', 'stop' or 'error'.
   async function processNote(id) {
@@ -100,6 +107,18 @@ export function createActionService(runtime, options = {}) {
     const version = versions.get(id) || 0
     const note = await readNote(id)
     if (!note || !note.content.trim() || isCurrent(id, note.hash)) { counters.skipped += 1; return 'skip' }
+    // Only matching is out of date: no model call is needed to recheck completions against the open actions.
+    if (extractionCurrent(id, note.hash)) {
+      try {
+        const found = await matchCompletions({
+          store: runtime.actionStore, noteId: id, content: note.content, now: referenceTime(note), timeZone: settings.timeZone, open: runtime.actionStore.openForMatching(),
+        })
+        counters.autoCompleted += found.completed.length
+        counters.completionsSuggested += found.suggested.length
+      } catch (error) { console.error(`Action matching of ${id} failed. ${error.message}`) }
+      await runtime.actionStore.setNoteState(id, { contentHash: note.hash, promptVersion: PROMPT_VERSION, matchingVersion: MATCHING_VERSION, processedAt: new Date().toISOString() })
+      return 'done'
+    }
     if (!(await waitForTurn())) return 'stop'
     if ((versions.get(id) || 0) !== version) return 'skip'
     const model = await installed()
@@ -109,17 +128,31 @@ export function createActionService(runtime, options = {}) {
       if (!(await waitForTurn())) throw Object.assign(new Error('Extraction was cancelled.'), { reason: 'cancelled' })
       return generate(messages, callOptions)
     }
-    const at = note.modifiedAt.getTime() < Date.now() ? note.modifiedAt : new Date()
+    const at = referenceTime(note)
+    if (model.embeddings && !vectorCache) vectorCache = createVectorCache(mlxEmbed(runtime.mlxService))
+    if (!model.embeddings) vectorCache = null
     const result = await extractActions({
       content: note.content, noteId: id, now: at, timeZone: settings.timeZone, generate: gated,
       embed: model.embeddings ? mlxEmbed(runtime.mlxService) : null, options: { modelId: model.id },
     })
     if (closed || (versions.get(id) || 0) !== version) return 'skip'
-    const outcome = await runtime.actionStore.addFromExtraction(id, result.items, { noteVersion: note.hash })
+    let outcome
+    if (matchable()) {
+      const matched = await applyNoteMatching({
+        store: runtime.actionStore, noteId: id, content: note.content, items: result.items, noteVersion: note.hash, at, timeZone: settings.timeZone,
+        vectors: vectorCache, ask: askWith(gated),
+      })
+      outcome = matched.added
+      counters.repeatsMerged += matched.merged.length
+      counters.autoCompleted += matched.completions.completed.length
+      counters.completionsSuggested += matched.completions.suggested.length
+    } else outcome = await runtime.actionStore.addFromExtraction(id, result.items, { noteVersion: note.hash, at })
     counters.itemsAdded += outcome?.added?.length ?? 0
     // A note whose model calls failed is not marked as processed, so a later save or backfill retries it.
     if (result.stats.degraded.length) return 'error'
-    await runtime.actionStore.setNoteState(id, { contentHash: note.hash, promptVersion: PROMPT_VERSION, processedAt: new Date().toISOString() })
+    await runtime.actionStore.setNoteState(id, {
+      contentHash: note.hash, promptVersion: PROMPT_VERSION, processedAt: new Date().toISOString(), ...(matchable() ? { matchingVersion: MATCHING_VERSION } : {}),
+    })
     counters.processed += 1
     return 'done'
   }

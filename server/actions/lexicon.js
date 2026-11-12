@@ -27,6 +27,7 @@ export const COMPLETION = [
   rx(`‹(?:have|has|had|har|hadde)\\s+(?:already\\s+|just\\s+|allerede\\s+|nettopp\\s+)?(?:${PAST_EN}|${PAST_NO})›`),
   rx(`‹(?:${PAST_EN})\\s+(?:the|a|an|it|them|him|her|that|this|those|these|our|my|his|their|out|over|in|off|up)›`),
   rx(`‹(?:${PRETERITE_NO})›`),
+  rx(`^[\\s>*_~-]*(?:${PAST_EN}|${PRETERITE_NO})›`),
   rx(`‹(?:is|are|was|were|has\\s+been|have\\s+been|ble|er|har\\s+blitt)\\s+(?:now\\s+|already\\s+|allerede\\s+|nå\\s+)?(?:${STATE_PARTICIPLES})›`),
   rx('^[\\s>*_~-]*(?:done|finished|completed|ferdig|fullført|✅|✓|✔)(?:[:!.\\s-]|$)'),
   rx('‹(?:all\\s+done|already\\s+done|allerede\\s+gjort|ferdig\\s+med)›'),

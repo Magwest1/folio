@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ActionItem, ReminderItem } from "../../../domain/types.ts";
+import type { ActionAnchor, ActionItem, ReminderItem } from "../../../domain/types.ts";
 import { useBoardDrag } from "../hooks/useBoardDrag.ts";
 import { useBoardLayout } from "../hooks/useBoardLayout.ts";
 import { useHomeActions } from "../hooks/useHomeActions.ts";
@@ -29,7 +29,7 @@ export type HomeViewProps = {
   titleForNote: (noteId: string | null | undefined) => string | null;
   onFileCapture: (groupId: string, text: string) => void;
   onOpenAsDraft: (groupId: string, text: string) => void;
-  onOpenSource: (action: ActionItem) => void;
+  onOpenSource: (action: ActionItem, anchor?: ActionAnchor) => void;
   /** Test seams. */
   pollMs?: number;
   now?: () => Date;

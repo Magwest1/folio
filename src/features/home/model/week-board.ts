@@ -38,6 +38,8 @@ export type BoardEntry = {
   reminder: boolean;
   /** Added by background extraction within the last two days and not touched since. */
   recentlyAdded: boolean;
+  /** Finished by Folio from a later note, within the last day: the note it came from. */
+  autoCompleted: { noteId: string | null } | null;
 };
 
 export type EarlierGroup = { date: string; label: string; entries: BoardEntry[] };
@@ -84,6 +86,7 @@ export type WeekBoard = {
 };
 
 const RECENT_MS = 48 * 60 * 60 * 1000;
+const AUTO_DONE_MS = 24 * 60 * 60 * 1000;
 
 type Range = { start: string; end: string };
 
@@ -112,12 +115,24 @@ function isReminder(action: ActionItem, nowMs: number): boolean {
   return action.status === "open" && action.history.at(-1)?.to === "snoozed";
 }
 
-/** Did the user finish this item during `today`? */
-function completedOn(action: ActionItem, today: string, timeZone: string): boolean {
+/** Folio marked this done from a later note, and it happened in the last 24 hours. */
+function autoCompletedRecently(action: ActionItem, nowMs: number): boolean {
+  const last = action.history.at(-1);
+  return (
+    action.status === "done" &&
+    last?.to === "done" &&
+    last.by === "system" &&
+    last.reason === "completion" &&
+    nowMs - Date.parse(last.at) < AUTO_DONE_MS
+  );
+}
+
+/** Was this item finished during `today`, or marked done by Folio within the last day? */
+function completedOn(action: ActionItem, today: string, timeZone: string, nowMs: number): boolean {
   if (action.status !== "done") return false;
   const last = action.history.at(-1);
   if (!last || last.to !== "done") return false;
-  return localDate(new Date(last.at), timeZone) === today;
+  return localDate(new Date(last.at), timeZone) === today || autoCompletedRecently(action, nowMs);
 }
 
 function byTimeThenCreated(left: BoardEntry, right: BoardEntry): number {
@@ -186,7 +201,7 @@ export function buildWeekBoard(
 
   for (const action of actions) {
     const reminder = isReminder(action, nowMs);
-    const completed = completedOn(action, today, timeZone);
+    const completed = completedOn(action, today, timeZone, nowMs);
     const range = dueRange(action.due);
     const entry: BoardEntry = {
       action,
@@ -203,6 +218,7 @@ export function buildWeekBoard(
         action.status === "open" &&
         action.history.length === 0 &&
         nowMs - Date.parse(action.createdAt) < RECENT_MS,
+      autoCompleted: autoCompletedRecently(action, nowMs) ? { noteId: action.completion?.noteId ?? null } : null,
     };
 
     if (action.status === "faded") board.faded.push({ ...entry, placement: "faded" });

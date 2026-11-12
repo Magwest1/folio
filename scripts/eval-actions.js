@@ -3,6 +3,7 @@
 // Usage: node scripts/eval-actions.js [--stage detector] [--cases path | --holdout] [--baseline path]
 //   [--write-baseline] [--fail-on-regression] [--json] [--case id] [--verbose]
 //   [--model-id id] [--prompt-version v] [--no-embedding-filter] [--limit n]
+// Matching stage (#21): node scripts/eval-actions.js --stage matching [--holdout] [--model] [--verbose]; --model is local only.
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -24,6 +25,7 @@ const { values: options } = parseArgs({
     'model-id': { type: 'string' },
     'prompt-version': { type: 'string' },
     'no-embedding-filter': { type: 'boolean', default: false },
+    model: { type: 'boolean', default: false },
     limit: { type: 'string' },
     help: { type: 'boolean', default: false },
   },
@@ -36,7 +38,7 @@ const out = (line = '') => process.stdout.write(`${line}\n`)
 const fail = (message) => { process.stderr.write(`${message}\n`); process.exit(1) }
 
 if (options.help) {
-  out('node scripts/eval-actions.js [--stage detector|model|completion] [--cases path] [--baseline path] [--write-baseline] [--fail-on-regression] [--json] [--case id] [--verbose] [--model-id id] [--prompt-version v] [--no-embedding-filter] [--limit n]')
+  out('node scripts/eval-actions.js [--stage detector|model|matching] [--cases path] [--baseline path] [--write-baseline] [--fail-on-regression] [--json] [--case id] [--verbose] [--model-id id] [--prompt-version v] [--no-embedding-filter] [--limit n]')
   process.exit(0)
 }
 
@@ -44,6 +46,11 @@ const casesPath = options.holdout ? holdoutCasesPath : options.cases
 const isHoldout = path.resolve(casesPath) === holdoutCasesPath
 const stage = stages[options.stage]
 if (!stage) fail(`Unknown stage "${options.stage}". Available: ${Object.keys(stages).join(', ')}.`)
+
+if (stage.scenarios) {
+  const { runMatchingReport } = await import('./lib/action-eval-matching-report.js')
+  process.exit(await runMatchingReport({ ...options, defaultCases: defaultCasesPath }, stage))
+}
 
 const allCases = await loadCases(casesPath)
 const problems = validateCases(allCases)
@@ -101,7 +108,7 @@ if (options.json) {
     out(`  model calls/case ${routing.modelCallsPerCase?.toFixed(2)} (extra ${routing.extraCallsPerCase?.toFixed(2)})  mean latency/case ${Math.round(routing.meanLatencyMs)} ms  degraded spans ${routing.degraded}`)
     out(`  drop reasons: ${Object.entries(routing.dropReasons).map(([reason, total]) => `${reason} ${total}`).join(', ') || 'none'}`)
   }
-  out('Completions (kindHint completion vs case.completions, for #21)')
+  out('Completions (detector kindHint completion vs case.completions)')
   out(`  precision ${pct(metrics.completions.precision)}  recall ${pct(metrics.completions.recall)}  F1 ${pct(metrics.completions.f1)}   ${count(metrics.completions)}`)
   out('Field accuracy over matched pairs')
   for (const [field, entry] of Object.entries(metrics.fieldAccuracy)) out(`  ${field.padEnd(9)} ${pct(entry.accuracy)}   (${entry.correct}/${entry.total})`)

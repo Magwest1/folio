@@ -471,6 +471,18 @@
   line-height: 1.5;
 }
 
+.board-card-looks-done {
+  gap: 2px 10px;
+}
+
+.board-card-evidence {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .board-card-actions {
   position: absolute;
   right: -3px;

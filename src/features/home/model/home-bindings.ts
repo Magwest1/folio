@@ -1,4 +1,4 @@
-import type { ActionItem } from "../../../domain/types.ts";
+import type { ActionAnchor, ActionItem } from "../../../domain/types.ts";
 
 /** What the workspace gives Home. Home owns no tab, draft or navigation logic itself. */
 export type HomeWorkspaceBindings = {
@@ -8,7 +8,8 @@ export type HomeWorkspaceBindings = {
   fileCapture: (groupId: string, text: string) => void;
   /** Moves the text into a normal draft tab with the caret at its end. */
   openCaptureAsDraft: (groupId: string, text: string) => void;
-  openSource: (action: ActionItem) => void;
+  /** Opens the note an action came from, at `anchor` when given (another note, or the evidence of a completion). */
+  openSource: (action: ActionItem, anchor?: ActionAnchor) => void;
   /** Set when a system notification was clicked: the card to land on once Home is showing. */
   focusAction: { id: string | null; seq: number } | null;
 };

@@ -324,6 +324,12 @@ function trackedMetrics(metrics) {
     'routing.suggestionRecall': metrics.routing?.suggestionRecall,
     'completions.precision': metrics.completions?.precision,
     'completions.recall': metrics.completions?.recall,
+    'matching.repeats.precision': metrics.matching?.repeats?.precision,
+    'matching.repeats.recall': metrics.matching?.repeats?.recall,
+    'matching.completions.precision': metrics.matching?.completions?.precision,
+    'matching.completions.recall': metrics.matching?.completions?.recall,
+    'matching.autoCompletion.precision': metrics.matching?.autoCompletion?.precision,
+    'matching.autoCompletion.recall': metrics.matching?.autoCompletion?.recall,
   }
   for (const field of FIELDS) tracked[`fieldAccuracy.${field}`] = metrics.fieldAccuracy?.[field]?.accuracy
   for (const [language, entry] of Object.entries(metrics.byLanguage ?? {})) {
@@ -361,10 +367,6 @@ export const detectorPath = fileURLToPath(detectorUrl)
 // ACTION_EVAL_DETECTOR points the stage at another module exporting detectActionCandidates (for experiments).
 const detectorOverride = () => (process.env.ACTION_EVAL_DETECTOR ? path.resolve(process.env.ACTION_EVAL_DETECTOR) : null)
 
-function notImplemented(stage, issue) {
-  return async () => { throw new Error(`The "${stage}" stage is not implemented yet (see ${issue}).`) }
-}
-
 /**
  * Stage registry. A stage is `{ description, local, load }` where `load()` resolves to
  * `predictFn(caseItem) => predictions` in the detector's output shape (`from`, `to`, `explicit`,
@@ -373,8 +375,7 @@ function notImplemented(stage, issue) {
  * Extension points:
  * - `model` (#17): see action-eval-model.js. Runs the full extraction pipeline against a real MLX service and
  *   maps the final items to this shape. It is `local: true` and stays out of `npm test`.
- * - `completion` (#21): will need its own scorer for completion/duplicate matching using
- *   `caseItem.completions`; register it here and give it a dedicated scoring function.
+ * - `matching` (#21): scenario based (several notes over time) with its own scorer, see action-eval-matching.js.
  */
 export const stages = {
   detector: {
@@ -395,10 +396,11 @@ export const stages = {
     // Starts the MLX helper, so it is imported lazily and never by `npm test`.
     load: async (options = {}) => (await import('./action-eval-model.js')).loadModelStage(options),
   },
-  completion: {
-    description: 'Completion and duplicate matching (#21)',
+  matching: {
+    description: 'Repeat and completion matching across notes (#21); --model adds Gemma and embeddings, local only',
     local: false,
-    available: () => false,
-    load: notImplemented('completion', '#21'),
+    scenarios: true,
+    available: () => true,
+    load: async (options = {}) => (await import('./action-eval-matching.js')).loadMatchingStage(options),
   },
 }
