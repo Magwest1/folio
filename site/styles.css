@@ -237,3 +237,7 @@ h1,h2,h3{text-wrap:balance;margin:0;font-family:var(--display);font-weight:600;c
 }
 .card img{aspect-ratio:1514/1300;object-fit:cover;object-position:top}
 .hero .pill{margin:0 auto 4px}
+
+/* v0.11: cards with differently shaped screenshots; translation split uses a wider crop */
+.card img{aspect-ratio:auto;object-fit:initial}
+.look.split .look-media img.wide{max-width:min(100%,620px)}
