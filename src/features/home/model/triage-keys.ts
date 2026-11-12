@@ -1,5 +1,5 @@
 export type BoardCommand =
-  | { type: "focus"; direction: "next" | "previous" | "left" | "right" }
+  | { type: "focus"; direction: "next" | "previous" }
   | { type: "move"; to: "earlier" | "later" | "loose" }
   | { type: "accept" | "done" | "edit" | "snooze" | "not-an-action" | "not-important" | "open-source" };
 
@@ -10,8 +10,6 @@ const PLAIN: Record<string, BoardCommand> = {
   ArrowDown: { type: "focus", direction: "next" },
   k: { type: "focus", direction: "previous" },
   ArrowUp: { type: "focus", direction: "previous" },
-  ArrowLeft: { type: "focus", direction: "left" },
-  ArrowRight: { type: "focus", direction: "right" },
   a: { type: "accept" },
   d: { type: "done" },
   e: { type: "edit" },
@@ -22,9 +20,12 @@ const PLAIN: Record<string, BoardCommand> = {
 };
 
 const SHIFTED: Record<string, BoardCommand> = {
+  ArrowUp: { type: "move", to: "earlier" },
+  ArrowDown: { type: "move", to: "later" },
+  // Left and right are aliases for the previous and next bucket.
   ArrowLeft: { type: "move", to: "earlier" },
   ArrowRight: { type: "move", to: "later" },
-  ArrowDown: { type: "move", to: "loose" },
+  End: { type: "move", to: "loose" },
 };
 
 /** Board keys. They only apply while focus is inside the board and never while typing. */
@@ -34,4 +35,4 @@ export function boardCommand(event: KeyEvent): BoardCommand | null {
 }
 
 export const BOARD_HINT =
-  "Arrows or j/k move · Shift+arrows move a day · d done · a accept · e edit · s snooze · x not an action · n not important";
+  "↑↓ or j/k move · Shift+↑↓ move it to another day · d done · a accept · e edit · s snooze · x not an action · n not important";

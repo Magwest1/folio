@@ -9,7 +9,7 @@ import { BoardIcon, type BoardIconName } from "./BoardIcons.tsx";
 import { SnoozeMenu } from "./SnoozeMenu.tsx";
 import { SourceMenu } from "./SourceMenu.tsx";
 
-/** Everything a card needs from Home, so columns and the tray stay thin. */
+/** Everything a card needs from Home, so the timeline stays thin. */
 export type BoardEnv = {
   titleForNote: (noteId: string | null | undefined) => string | null;
   presets: SnoozePreset[];
@@ -32,8 +32,6 @@ export type BoardEnv = {
 type BoardCardProps = {
   entry: BoardEntry;
   env: BoardEnv;
-  /** "card" fills a column, "chip" is the compact form for the tray and window bands. */
-  variant: "card" | "chip";
 };
 
 function IconButton({
@@ -68,7 +66,7 @@ const QUOTE_PREVIEW = 80;
 const preview = (quote: string): string => (quote.length > QUOTE_PREVIEW ? `${quote.slice(0, QUOTE_PREVIEW - 1).trimEnd()}…` : quote);
 const unique = (items: string[]): string[] => [...new Set(items)];
 
-export function BoardCard({ entry, env, variant }: BoardCardProps) {
+export function BoardCard({ entry, env }: BoardCardProps) {
   const { action } = entry;
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const sourceTitle = env.titleForNote(action.anchor?.noteId);
@@ -93,7 +91,6 @@ export function BoardCard({ entry, env, variant }: BoardCardProps) {
 
   const person = [action.person, entry.waitingLabel].filter(Boolean).join(" · ");
   const meta: ReactNode[] = [
-    entry.timeLabel,
     entry.dateLabel,
     person || null,
     entry.reminder ? "back from snooze" : null,
@@ -103,7 +100,6 @@ export function BoardCard({ entry, env, variant }: BoardCardProps) {
 
   const classes = [
     "board-card",
-    `is-${variant}`,
     entry.suggested && "is-suggested",
     entry.completed && "is-completed",
     faded && "is-faded",
@@ -137,9 +133,8 @@ export function BoardCard({ entry, env, variant }: BoardCardProps) {
       ) : (
         <>
           {entry.suggested && <span className="board-card-flag">suggested</span>}
-          <p className="board-card-text" title={variant === "chip" ? action.text : undefined}>
-            {action.text}
-          </p>
+          {entry.timeLabel && <time className="board-card-time">{entry.timeLabel}</time>}
+          <p className="board-card-text">{action.text}</p>
           <div className={`board-card-foot${meta.length ? "" : " is-bare"}`}>
             {meta.length > 0 && (
               <p className="board-card-meta">

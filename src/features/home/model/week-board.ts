@@ -1,11 +1,11 @@
 import type { ActionDue, ActionItem } from "../../../domain/types.ts";
-import { addDays, daysBetween, localDate, shortDate, startOfWeek, weekdayName } from "./home-time.ts";
+import { daysBetween, localDate, shortDate, weekdayName } from "./home-time.ts";
 import {
   buildTimeColumns,
   entryDateLabel,
   HORIZON_CAP_DAYS,
   HORIZON_TARGET,
-  MAX_BUDGET,
+  TIMELINE_BUDGET,
   type ColumnSpec,
 } from "./time-buckets.ts";
 
@@ -13,7 +13,6 @@ export type BoardPlacement =
   | "today"
   | "earlier"
   | "day"
-  | "window"
   | "later"
   | "to-confirm"
   | "loose"
@@ -50,15 +49,6 @@ export type TimeColumn = ColumnSpec & {
   entries: BoardEntry[];
 };
 
-export type WindowBand = {
-  key: string;
-  label: string;
-  /** Indexes of the first and last columns the band spans. */
-  from: number;
-  to: number;
-  entries: BoardEntry[];
-};
-
 export type BoardSummary = {
   /** Open items for today, including earlier ones and returning snoozes. */
   today: number;
@@ -75,7 +65,6 @@ export type WeekBoard = {
   columns: TimeColumn[];
   /** The last date the columns before Later cover. */
   horizon: string;
-  bands: WindowBand[];
   toConfirm: BoardEntry[];
   looseEnds: BoardEntry[];
   waiting: BoardEntry[];
@@ -157,27 +146,18 @@ function earlierLabel(date: string, today: string): string {
   return `from ${shortDate(date)}`;
 }
 
-function windowLabel(range: Range, today: string): string {
-  const thisWeek = startOfWeek(today);
-  const sameWeek = (date: string) => startOfWeek(date) === thisWeek;
-  const nextWeek = (date: string) => startOfWeek(date) === addDays(thisWeek, 7);
-  if (sameWeek(range.start) && sameWeek(range.end)) return "sometime this week";
-  if (nextWeek(range.start) && nextWeek(range.end)) return "sometime next week";
-  return `sometime ${shortDate(range.start)} to ${shortDate(range.end)}`;
-}
-
 type Dated = { entry: BoardEntry; start: string; end: string; window: boolean };
 
 /**
  * Where everything lives on the week storyboard. Pure: actions, the clock, a timezone
- * and the number of columns the pane can hold in; time columns, window bands and the
- * tray out. Columns zoom out to the right when little is due.
+ * and a column budget in; time buckets and the undated sections out. Buckets zoom out
+ * further from today when little is due. The vertical timeline gives them all the room they need.
  */
 export function buildWeekBoard(
   actions: ActionItem[],
   now: Date,
   timeZone: string,
-  budget: number = MAX_BUDGET,
+  budget: number = TIMELINE_BUDGET,
   target: number = HORIZON_TARGET,
   capDays: number = HORIZON_CAP_DAYS,
 ): WeekBoard {
@@ -190,7 +170,6 @@ export function buildWeekBoard(
     today,
     columns: [],
     horizon: today,
-    bands: [],
     toConfirm: [],
     looseEnds: [],
     waiting: [],
@@ -259,27 +238,21 @@ export function buildWeekBoard(
   };
   for (const entry of todayEntries) inColumn(entry, todayColumn, null);
 
-  const bandMap = new Map<string, WindowBand>();
   for (const item of dated) {
     if (!item.window) {
       const column = columns.find((candidate) => candidate.end !== null && item.start >= candidate.start && item.start <= candidate.end);
       inColumn(item.entry, column ?? laterColumn, item.start);
       continue;
     }
+    // A window sits under the bucket that contains it; failing that, under the bucket where it starts.
     const container = columns.find(
       (candidate) => candidate.kind !== "later" && candidate.end !== null && candidate.start <= item.start && item.end <= candidate.end,
     );
     if (container) inColumn(item.entry, container, item.start);
-    else if (item.start > board.horizon) inColumn(item.entry, laterColumn, item.start);
     else {
-      const overlaps = columns.flatMap((column, index) =>
-        item.start <= (column.end ?? "9999-12-31") && item.end >= column.start ? [index] : [],
-      );
-      const label = windowLabel({ start: item.start, end: item.end }, today);
-      const key = `${label}:${overlaps[0]}-${overlaps.at(-1)}`;
-      const band = bandMap.get(key) ?? { key, label, from: overlaps[0], to: overlaps.at(-1) as number, entries: [] };
-      band.entries.push({ ...item.entry, placement: "window", column: columns[overlaps[0]].id });
-      bandMap.set(key, band);
+      const start = item.start < today ? today : item.start;
+      const home = columns.find((candidate) => candidate.end !== null && start >= candidate.start && start <= candidate.end);
+      inColumn(item.entry, home ?? laterColumn, item.start);
     }
   }
 
@@ -295,8 +268,6 @@ export function buildWeekBoard(
 
   for (const column of columns)
     column.entries.sort(column.kind === "day" || column.kind === "today" ? byTimeThenCreated : byStartThenTime).sort(openFirst);
-  board.bands = [...bandMap.values()].sort((left, right) => left.from - right.from || left.to - right.to);
-  for (const band of board.bands) band.entries.sort(byTimeThenCreated);
   board.toConfirm.sort(byStartThenTime);
   board.looseEnds.sort((left, right) => (left.action.createdAt < right.action.createdAt ? -1 : 1));
   board.waiting.sort((left, right) => (left.action.createdAt < right.action.createdAt ? -1 : 1));
@@ -304,7 +275,6 @@ export function buildWeekBoard(
 
   const placed = [
     ...columns.flatMap((column) => [...column.entries, ...column.earlier.flatMap((group) => group.entries)]),
-    ...board.bands.flatMap((band) => band.entries),
   ];
   const counts = (entry: BoardEntry) => !entry.completed && !entry.suggested;
   const todayCards = [...todayColumn.entries, ...todayColumn.earlier.flatMap((group) => group.entries)];
@@ -321,12 +291,11 @@ export function buildWeekBoard(
   return board;
 }
 
-/** Every card in reading order: window bands, the columns (earlier first in Today), then the tray. */
+/** Every card in reading order: the columns (earlier first in Today), then to confirm, no date and waiting. */
 export type BoardGroup = { id: string; entries: BoardEntry[] };
 
 export function boardGroups(board: WeekBoard): BoardGroup[] {
   return [
-    ...board.bands.map((band) => ({ id: `band:${band.key}`, entries: band.entries })),
     ...board.columns.map((column) => ({
       id: column.id,
       entries: [...column.earlier.flatMap((group) => group.entries), ...column.entries],

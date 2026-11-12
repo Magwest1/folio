@@ -21,3 +21,11 @@ export function isTypingTarget(target: EventTarget | null): boolean {
       target.closest("[role=menu], form") !== null)
   );
 }
+
+/** Drag-to-scroll starts on empty timeline space, never on a card, a control or a menu. */
+export function canDragScrollFrom(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    target.closest("[data-board-card], button, a, input, textarea, select, summary, [role=menu], [draggable=true]") === null
+  );
+}

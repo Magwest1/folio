@@ -82,7 +82,7 @@ test("Not important removes an action permanently", async ({ page, request }) =>
   expect(open.map((action) => action.id)).not.toContain(id);
 });
 
-test("a card moves to another column by drag and by keyboard", async ({ page, request }) => {
+test("a card moves to another day or bucket by drag and by keyboard", async ({ page, request }) => {
   const token = Date.now().toString(36);
   const dragText = `Home e2e drag me ${token}`;
   const keyText = `Home e2e key me ${token}`;
@@ -101,7 +101,7 @@ test("a card moves to another column by drag and by keyboard", async ({ page, re
 
   try {
     await page.goto("/");
-    // Columns adapt to what is due, so drop on Today, which is always a single day.
+    // The buckets adapt to what is due, so drop on Today, which is always a single day.
     const card = page.getByRole("listitem").filter({ hasText: dragText });
     await expect(card).toBeVisible();
     const target = page.locator("[data-column='today']");
@@ -109,10 +109,10 @@ test("a card moves to another column by drag and by keyboard", async ({ page, re
     await expect(target.getByText(dragText)).toBeVisible();
     await expect.poll(() => dueOf(dragged)).toEqual({ date: dateOf(0), time: "10:00" });
 
-    // Keyboard: Shift+Left moves a card to the column before its own, and the move is announced.
+    // Keyboard: Shift+Up moves a card to the bucket before its own, and the move is announced.
     const keyCard = page.getByRole("listitem").filter({ hasText: keyText });
     await keyCard.focus();
-    await page.keyboard.press("Shift+ArrowLeft");
+    await page.keyboard.press("Shift+ArrowUp");
     await expect(page.getByRole("status")).toContainText("Moved to");
     await expect.poll(() => dueOf(keyed)).not.toEqual({ date: dateOf(2), time: "10:00" });
     await expect(page.getByRole("listitem").filter({ hasText: keyText })).toBeVisible();

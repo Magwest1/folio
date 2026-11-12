@@ -148,7 +148,7 @@ describe("home focus and keys", () => {
       boardCommand({ key: value, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...extra });
     expect(key("j")).toEqual({ type: "focus", direction: "next" });
     expect(key("ArrowUp")).toEqual({ type: "focus", direction: "previous" });
-    expect(key("ArrowRight")).toEqual({ type: "focus", direction: "right" });
+    expect(key("ArrowRight")).toBeNull();
     expect(key("a")).toEqual({ type: "accept" });
     expect(key("d")).toEqual({ type: "done" });
     expect(key("e")).toEqual({ type: "edit" });
@@ -156,9 +156,12 @@ describe("home focus and keys", () => {
     expect(key("x")).toEqual({ type: "not-an-action" });
     expect(key("n")).toEqual({ type: "not-important" });
     expect(key("Enter")).toEqual({ type: "open-source" });
+    expect(key("ArrowUp", { shiftKey: true })).toEqual({ type: "move", to: "earlier" });
+    expect(key("ArrowDown", { shiftKey: true })).toEqual({ type: "move", to: "later" });
+    // Left and right stay as aliases for the previous and next bucket; End means no date.
     expect(key("ArrowLeft", { shiftKey: true })).toEqual({ type: "move", to: "earlier" });
     expect(key("ArrowRight", { shiftKey: true })).toEqual({ type: "move", to: "later" });
-    expect(key("ArrowDown", { shiftKey: true })).toEqual({ type: "move", to: "loose" });
+    expect(key("End", { shiftKey: true })).toEqual({ type: "move", to: "loose" });
     expect(key("n", { shiftKey: true })).toBeNull();
     expect(key("t", { metaKey: true })).toBeNull();
     expect(key("a", { ctrlKey: true })).toBeNull();
