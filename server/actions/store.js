@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import { fingerprintFor, quoteKey, textKey } from './fingerprint.js'
 import { locateQuote } from './anchors.js'
+import { createMatchingMethods } from './store-matching.js'
 import { createWriter, readState } from './persistence.js'
 import {
   CLOSED_STATUSES, KINDS, asList, dueRange, httpError, normalizeDue, normalizeKind,
@@ -34,6 +35,10 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
   // `raw` keeps a lapsed snooze as snoozed, so the reminder planner can still see which snooze just ended.
   function present(action, raw = false) {
     const view = clone(action)
+    // Fields added with matching (#21) are missing on older actions.
+    view.anchors ??= []
+    view.completion ??= null
+    view.completionSuggestion ??= null
     if (!raw && view.status === 'snoozed' && view.snoozedUntil && Date.parse(view.snoozedUntil) <= now().getTime()) {
       view.status = 'open'
       view.snoozedUntil = null
@@ -72,6 +77,7 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
       id: idFactory(), text: '', kind: 'task', person: null, due: null, status: 'open', snoozedUntil: null,
       confidence: null, explicit: false, origin: 'manual', editedByUser: false, anchor: null,
       signals: [], promptVersion: null, modelId: null, createdAt: at, updatedAt: at, touchedAt: at, history: [],
+      anchors: [], sourceAt: null, completion: null, completionSuggestion: null,
       ...fields,
     }
     action.fingerprint = fingerprintFor({ quote: action.anchor?.quote, text: action.text })
@@ -130,7 +136,9 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
     }
   }
 
+  const matching = createMatchingMethods({ data, require, move, stamp, persist, present, transition: (id, to, type) => transition(id, to, type) })
   const store = {
+    ...matching,
     async load() { data() },
     flush: () => writer.flush(),
     // Called after every change that is saved. Returns an unsubscribe function.
@@ -163,7 +171,7 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
 
     get: (id) => { const action = data().actions.find((item) => item.id === id); return action ? present(action) : null },
 
-    addFromExtraction(noteId, items, { noteVersion = null } = {}) {
+    addFromExtraction(noteId, items, { noteVersion = null, at = null } = {}) {
       const result = { added: [], updated: [], suppressed: [] }
       for (const raw of Array.isArray(items) ? items : []) {
         const item = cleanItem(raw)
@@ -178,6 +186,7 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
         if (existing) { applyExtraction(existing, item, noteId, noteVersion); result.updated.push(present(existing)); continue }
         const action = build({
           ...item, anchor: item.anchor && { noteId, version: noteVersion, ...item.anchor, orphaned: false },
+          sourceAt: at instanceof Date ? at.toISOString() : at,
         })
         if (action.status === 'suggested' && action.origin !== 'suggested') action.origin = 'suggested'
         result.added.push(present(action))
@@ -238,6 +247,7 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
 
     reopen(id) {
       const action = require(id)
+      if (action.status === 'done') matching.forgetCompletion(action)
       if (action.status !== 'open' || action.snoozedUntil) { move(action, 'open'); persist() }
       return present(action)
     },
@@ -300,6 +310,9 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
       const action = require(id)
       const last = action.history.at(-1)
       if (!last) throw httpError(409, 'Nothing to undo.')
+      const system = matching.undoSystem(id)
+      if (system) return system
+      if (last.to === 'done') matching.forgetCompletion(action)
       const type = FEEDBACK_BY_STATUS[last.to] || (last.to === 'open' && last.from === 'suggested' ? 'accepted' : null)
       const { feedback } = data()
       const index = type ? feedback.findLastIndex((entry) => entry.actionId === id && entry.type === type) : -1
@@ -361,13 +374,12 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
     reanchor(noteId, content, { noteVersion = null } = {}) {
       const result = { moved: [], orphaned: [] }
       let changed = false
-      for (const action of data().actions) {
-        const anchor = action.anchor
+      for (const action of data().actions) for (const anchor of [action.anchor, ...(action.anchors ?? [])]) {
         if (anchor?.noteId !== noteId || !anchor.quote) continue
         const hit = locateQuote(String(content ?? ''), anchor)
         if (!hit) {
           if (!anchor.orphaned) { anchor.orphaned = true; changed = true }
-          result.orphaned.push(action.id)
+          if (!result.orphaned.includes(action.id)) result.orphaned.push(action.id)
           continue
         }
         if (hit.from !== anchor.from || hit.to !== anchor.to || hit.quote !== anchor.quote || anchor.orphaned) result.moved.push(action.id)
@@ -385,7 +397,7 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
       const rewrite = (id) => (folder ? (id.startsWith(oldId) ? newId + id.slice(oldId.length) : id) : (id === oldId ? newId : id))
       const current = data()
       let changed = false
-      for (const { anchor } of current.actions) {
+      for (const action of current.actions) for (const anchor of [action.anchor, ...(action.anchors ?? [])]) {
         if (!anchor?.noteId || rewrite(anchor.noteId) === anchor.noteId) continue
         anchor.noteId = rewrite(anchor.noteId)
         changed = true
@@ -418,8 +430,8 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
 
     noteState: (noteId) => clone(data().noteStates[noteId] || null),
     setNoteState(noteId, noteState) {
-      const { contentHash = null, promptVersion = null, processedAt = stamp() } = noteState || {}
-      data().noteStates[noteId] = { contentHash, promptVersion, processedAt }
+      const { contentHash = null, promptVersion = null, matchingVersion = null, processedAt = stamp() } = noteState || {}
+      data().noteStates[noteId] = { contentHash, promptVersion, ...(matchingVersion === null ? {} : { matchingVersion }), processedAt }
       return persist()
     },
   }
@@ -427,6 +439,7 @@ export function createActionStore({ filePath, now = () => new Date(), idFactory 
   function transition(id, to, feedbackType) {
     const action = require(id)
     if (action.status === to) return present(action)
+    if (CLOSED_STATUSES.includes(to)) action.completionSuggestion = null
     move(action, to)
     record(feedbackType, action)
     persist()

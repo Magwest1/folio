@@ -289,7 +289,20 @@ export type ActionHistoryEntry = {
   from: ActionStatus;
   to: ActionStatus;
   by: string;
+  /** Set on changes made by Folio itself, for example "repeat" or "completion". */
+  reason?: string;
   snoozedUntil?: string | null;
+};
+/** A passage in a later note that probably finishes an action ("sent the budget to Anna"). */
+export type ActionEvidence = {
+  noteId: string | null;
+  quote: string;
+  from: number | null;
+  to: number | null;
+  score: number | null;
+  at: string;
+  /** True when Folio marked the action done on its own. */
+  auto?: boolean;
 };
 export type ActionItem = {
   id: string;
@@ -303,6 +316,12 @@ export type ActionItem = {
   origin: ActionOrigin;
   editedByUser: boolean;
   anchor: ActionAnchor | null;
+  /** Other notes that restate the same commitment. `anchor` stays the first one. */
+  anchors?: ActionAnchor[];
+  /** The evidence behind a done status that came from a note. */
+  completion?: ActionEvidence | null;
+  /** Waiting for the user: "Looks done?". The status does not change until they answer. */
+  completionSuggestion?: ActionEvidence | null;
   createdAt: string;
   updatedAt: string;
   touchedAt: string;
@@ -316,7 +335,9 @@ export type ActionTransition =
   | "let-go"
   | "reject"
   | "undo"
-  | "keep";
+  | "keep"
+  | "completion/accept"
+  | "completion/dismiss";
 export type ActionPatch = Partial<Pick<ActionItem, "text" | "kind" | "person" | "due">>;
 
 export type ReminderLevel = "off" | "gentle" | "normal";

@@ -1,0 +1,103 @@
+{
+  "stage": "matching",
+  "date": "2026-11-12T19:20:10.545Z",
+  "metrics": {
+    "scenarios": 12,
+    "matching": {
+      "repeats": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      "completions": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1,
+        "recall": 0.6667,
+        "f1": 0.8
+      },
+      "autoCompletion": {
+        "predicted": 2,
+        "correct": 2,
+        "expected": 2,
+        "found": 2,
+        "precision": 1,
+        "recall": 1
+      },
+      "wrongResurrections": 0,
+      "created": {
+        "expected": 2,
+        "found": 2,
+        "rate": 1
+      }
+    },
+    "byLanguage": {
+      "en": {
+        "scenarios": 8,
+        "errors": 1
+      },
+      "no": {
+        "scenarios": 4,
+        "errors": 0
+      }
+    },
+    "byTag": {
+      "auto": {
+        "scenarios": 2,
+        "errors": 0
+      },
+      "completion": {
+        "scenarios": 4,
+        "errors": 1
+      },
+      "different-person": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "future-vs-past": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "hard-negative": {
+        "scenarios": 7,
+        "errors": 0
+      },
+      "letgo": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "negated": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "other-person": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "partial": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "person": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "recurring": {
+        "scenarios": 1,
+        "errors": 0
+      },
+      "repeat": {
+        "scenarios": 3,
+        "errors": 0
+      },
+      "suggestion": {
+        "scenarios": 1,
+        "errors": 1
+      }
+    }
+  }
+}

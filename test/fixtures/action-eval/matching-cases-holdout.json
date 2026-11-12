@@ -1,0 +1,435 @@
+[
+  {
+    "id": "h01-en-repeat-reply",
+    "language": "en",
+    "now": "2026-11-12T09:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "notes": [
+      {
+        "id": "/security-review.md",
+        "at": "2026-11-09T09:00:00+01:00",
+        "content": "# Security review\n\nOmar flagged two findings in the audit.\n\n- [ ] Reply to Omar about the security review\n- [ ] Rotate the staging keys\n"
+      },
+      {
+        "id": "/standup.md",
+        "at": "2026-11-11T10:00:00+01:00",
+        "content": "# Standup\n\nLaunch is still on track.\nI need to reply to Omar about the security review before Friday.\n"
+      }
+    ],
+    "userActions": [],
+    "expected": {
+      "repeats": [
+        {
+          "noteId": "/standup.md",
+          "quote": "I need to reply to Omar about the security review before Friday.",
+          "sameAs": {
+            "noteId": "/security-review.md",
+            "quote": "Reply to Omar about the security review"
+          }
+        }
+      ],
+      "completions": [],
+      "stayClosed": [],
+      "created": []
+    },
+    "tags": [
+      "repeat",
+      "person"
+    ]
+  },
+  {
+    "id": "h02-no-repeat-frisor",
+    "language": "no",
+    "now": "2026-11-12T09:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "notes": [
+      {
+        "id": "/helgen.md",
+        "at": "2026-11-08T18:00:00+01:00",
+        "content": "# Helgen\n\nHandlet inn til middag.\n- [ ] Bestille time hos frisøren\n"
+      },
+      {
+        "id": "/uke46.md",
+        "at": "2026-11-11T08:30:00+01:00",
+        "content": "# Uke 46\n\nKort uke på jobb.\nMå bestille time hos frisøren.\n"
+      }
+    ],
+    "userActions": [],
+    "expected": {
+      "repeats": [
+        {
+          "noteId": "/uke46.md",
+          "quote": "Må bestille time hos frisøren.",
+          "sameAs": {
+            "noteId": "/helgen.md",
+            "quote": "Bestille time hos frisøren"
+          }
+        }
+      ],
+      "completions": [],
+      "stayClosed": [],
+      "created": []
+    },
+    "tags": [
+      "repeat"
+    ]
+  },
+  {
+    "id": "h03-en-diff-person",
+    "language": "en",
+    "now": "2026-11-12T09:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "notes": [
+      {
+        "id": "/venue.md",
+        "at": "2026-11-09T09:00:00+01:00",
+        "content": "# Venue\n\n- [ ] Call Ingrid about the venue\n"
+      },
+      {
+        "id": "/catering.md",
+        "at": "2026-11-10T09:00:00+01:00",
+        "content": "# Catering\n\n- [ ] Call Henrik about the venue\n"
+      }
+    ],
+    "userActions": [],
+    "expected": {
+      "repeats": [],
+      "completions": [],
+      "stayClosed": [],
+      "created": [
+        {
+          "noteId": "/catering.md",
+          "quote": "Call Henrik about the venue"
+        }
+      ]
+    },
+    "tags": [
+      "hard-negative",
+      "different-person"
+    ]
+  },
+  {
+    "id": "h04-en-letgo-paraphrase",
+    "language": "en",
+    "now": "2026-11-12T09:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "notes": [
+      {
+        "id": "/ideas.md",
+        "at": "2026-11-03T09:00:00+01:00",
+        "content": "# Ideas\n\n- [ ] Draft the newsletter intro\n- [ ] Compare hosting prices\n"
+      },
+      {
+        "id": "/notes-nov.md",
+        "at": "2026-11-10T09:00:00+01:00",
+        "content": "# November\n\nGood week for the blog.\nI have to draft the intro for the newsletter.\n"
+      }
+    ],
+    "userActions": [
+      {
+        "after": 0,
+        "quote": "Draft the newsletter intro",
+        "op": "let-go"
+      }
+    ],
+    "expected": {
+      "repeats": [],
+      "completions": [],
+      "stayClosed": [
+        {
+          "noteId": "/notes-nov.md",
+          "quote": "I have to draft the intro for the newsletter."
+        }
+      ],
+      "created": []
+    },
+    "tags": [
+      "hard-negative",
+      "letgo"
+    ]
+  },
+  {
+    "id": "h05-no-recurring-done",
+    "language": "no",
+    "now": "2026-11-12T09:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "notes": [
+      {
+        "id": "/oktober.md",
+        "at": "2026-10-06T09:00:00+02:00",
+        "content": "# Oktober\n\n- [ ] Betale strømregningen\n"
+      },
+      {
+        "id": "/november.md",
+        "at": "2026-11-09T09:00:00+01:00",
+        "content": "# November\n\n- [ ] Betale strømregningen\n"
+      }
+    ],
+    "userActions": [
+      {
+        "after": 0,
+        "quote": "Betale strømregningen",
+        "op": "done"
+      }
+    ],
+    "expected": {
+      "repeats": [],
+      "completions": [],
+      "stayClosed": [],
+      "created": [
+        {
+          "noteId": "/november.md",
+          "quote": "Betale strømregningen"
+        }
+      ]
+    },
+    "tags": [
+      "hard-negative",
+      "recurring"
+    ]
+  },
+  {
+    "id": "h06-en-complete-pay",
+    "language": "en",
+    "now": "2026-11-12T09:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "notes": [
+      {
+        "id": "/bills.md",
+        "at": "2026-11-09T09:00:00+01:00",
+        "content": "# Bills\n\n- [ ] Pay the electricity bill\n- [ ] Cancel the old gym membership\n"
+      },
+      {
+        "id": "/journal.md",
+        "at": "2026-11-11T20:00:00+01:00",
+        "content": "# Journal\n\nQuiet evening.\nPaid the electricity bill.\n"
+      }
+    ],
+    "userActions": [],
+    "expected": {
+      "repeats": [],
+      "completions": [
+        {
+          "noteId": "/journal.md",
+          "quote": "Paid the electricity bill.",
+          "completes": {
+            "noteId": "/bills.md",
+            "quote": "Pay the electricity bill"
+          },
+          "auto": true
+        }
+      ],
+      "stayClosed": [],
+      "created": []
+    },
+    "tags": [
+      "completion",
+      "auto"
+    ]
+  },
+  {
+    "id": "h07-no-complete-betale",
+    "language": "no",
+    "now": "2026-11-12T09:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "notes": [
+      {
+        "id": "/okonomi.md",
+        "at": "2026-11-09T09:00:00+01:00",
+        "content": "# Økonomi\n\n- [ ] Betale fakturaen fra Harald\n"
+      },
+      {
+        "id": "/dagbok.md",
+        "at": "2026-11-11T19:00:00+01:00",
+        "content": "# Dagbok\n\nBetalte fakturaen fra Harald i dag.\n"
+      }
+    ],
+    "userActions": [],
+    "expected": {
+      "repeats": [],
+      "completions": [
+        {
+          "noteId": "/dagbok.md",
+          "quote": "Betalte fakturaen fra Harald i dag.",
+          "completes": {
+            "noteId": "/okonomi.md",
+            "quote": "Betale fakturaen fra Harald"
+          },
+          "auto": true
+        }
+      ],
+      "stayClosed": [],
+      "created": []
+    },
+    "tags": [
+      "completion",
+      "auto"
+    ]
+  },
+  {
+    "id": "h08-en-partial-prepare",
+    "language": "en",
+    "now": "2026-11-12T09:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "notes": [
+      {
+        "id": "/talk.md",
+        "at": "2026-11-09T09:00:00+01:00",
+        "content": "# Talk\n\n- [ ] Prepare the slides for Thursday\n"
+      },
+      {
+        "id": "/talk-progress.md",
+        "at": "2026-11-11T09:00:00+01:00",
+        "content": "# Progress\n\nPrepared half of the slides, still need the last section.\n"
+      }
+    ],
+    "userActions": [],
+    "expected": {
+      "repeats": [],
+      "completions": [],
+      "stayClosed": [],
+      "created": []
+    },
+    "tags": [
+      "hard-negative",
+      "partial"
+    ]
+  },
+  {
+    "id": "h09-no-negated-bekrefte",
+    "language": "no",
+    "now": "2026-11-12T09:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "notes": [
+      {
+        "id": "/booking.md",
+        "at": "2026-11-09T09:00:00+01:00",
+        "content": "# Booking\n\n- [ ] Bekrefte bookingen med Silje\n"
+      },
+      {
+        "id": "/status.md",
+        "at": "2026-11-11T09:00:00+01:00",
+        "content": "# Status\n\nHar ikke bekreftet bookingen med Silje ennå.\n"
+      }
+    ],
+    "userActions": [],
+    "expected": {
+      "repeats": [],
+      "completions": [],
+      "stayClosed": [],
+      "created": []
+    },
+    "tags": [
+      "hard-negative",
+      "negated"
+    ]
+  },
+  {
+    "id": "h10-en-other-person",
+    "language": "en",
+    "now": "2026-11-12T09:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "notes": [
+      {
+        "id": "/expenses.md",
+        "at": "2026-11-09T09:00:00+01:00",
+        "content": "# Expenses\n\n- [ ] Submit the expense report to Harper\n"
+      },
+      {
+        "id": "/team-chat.md",
+        "at": "2026-11-11T09:00:00+01:00",
+        "content": "# Team chat\n\nElena submitted her expense report to Harper.\n"
+      }
+    ],
+    "userActions": [],
+    "expected": {
+      "repeats": [],
+      "completions": [],
+      "stayClosed": [],
+      "created": []
+    },
+    "tags": [
+      "hard-negative",
+      "other-person"
+    ]
+  },
+  {
+    "id": "h11-en-will-vs-sent",
+    "language": "en",
+    "now": "2026-11-12T09:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "notes": [
+      {
+        "id": "/client.md",
+        "at": "2026-11-09T09:00:00+01:00",
+        "content": "# Client\n\n- [ ] Send the proposal to Omar\n"
+      },
+      {
+        "id": "/client-followup.md",
+        "at": "2026-11-11T16:00:00+01:00",
+        "content": "# Follow-up\n\nSent the pricing sheet to Omar.\nI will send the proposal to Omar on Monday.\n"
+      }
+    ],
+    "userActions": [],
+    "expected": {
+      "repeats": [
+        {
+          "noteId": "/client-followup.md",
+          "quote": "I will send the proposal to Omar on Monday.",
+          "sameAs": {
+            "noteId": "/client.md",
+            "quote": "Send the proposal to Omar"
+          }
+        }
+      ],
+      "completions": [],
+      "stayClosed": [],
+      "created": []
+    },
+    "tags": [
+      "hard-negative",
+      "future-vs-past",
+      "completion",
+      "repeat"
+    ]
+  },
+  {
+    "id": "h12-en-suggest-book",
+    "language": "en",
+    "now": "2026-11-12T09:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "notes": [
+      {
+        "id": "/conference.md",
+        "at": "2026-11-05T09:00:00+01:00",
+        "content": "# Conference\n\n- [ ] Book flights to Berlin for the conference\n"
+      },
+      {
+        "id": "/travel-log.md",
+        "at": "2026-11-10T21:00:00+01:00",
+        "content": "# Travel log\n\nBooked the flights to Berlin.\n"
+      }
+    ],
+    "userActions": [],
+    "expected": {
+      "repeats": [],
+      "completions": [
+        {
+          "noteId": "/travel-log.md",
+          "quote": "Booked the flights to Berlin.",
+          "completes": {
+            "noteId": "/conference.md",
+            "quote": "Book flights to Berlin for the conference"
+          },
+          "auto": false
+        }
+      ],
+      "stayClosed": [],
+      "created": []
+    },
+    "tags": [
+      "completion",
+      "suggestion"
+    ]
+  }
+]

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { ActionItem, BundleFile, Note, TabGroup, ViewerDocument } from "../../../domain/types.ts";
+import type { ActionAnchor, ActionItem, BundleFile, Note, TabGroup, ViewerDocument } from "../../../domain/types.ts";
 import { revealPassageWhenReady } from "../../../lib/passage-reveal.ts";
 import { serializeDraft } from "../../../lib/workspace.ts";
 import type { HomeWorkspaceBindings } from "../model/home-bindings.ts";
@@ -96,8 +96,8 @@ export function useHomeWorkspace({
         const id = createDraft(groupId, content);
         rememberSelection(id, content.length, content.length);
       },
-      openSource: (action: ActionItem) => {
-        const anchor = action.anchor;
+      openSource: (action: ActionItem, target?: ActionAnchor) => {
+        const anchor = target ?? action.anchor;
         if (!anchor?.noteId) return;
         const noteId = anchor.noteId;
         void openNote(noteId, activeGroupId).then(() => {

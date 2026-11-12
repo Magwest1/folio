@@ -122,3 +122,23 @@ A baseline records the stage, the date, the metrics (including completions) (no 
 4. Routing decisions (auto-add, to confirm, drop) should be reflected in the returned `explicit` flag, so explicit precision measures what would really be auto-added.
 
 The completion and duplicate matching stage (#21) needs its own scorer based on `completions`; register it as `stages.completion`.
+
+## Matching scenarios (issue #21)
+
+`matching-cases.json` (tuning) and `matching-cases-holdout.json` (blind, never tuned on) hold multi-note scenarios in English and Norwegian: a short sequence of notes written over time, replayed through detection, extraction and the repeat and completion matching against a real action store whose clock follows the notes. Run them with `node scripts/eval-actions.js --stage matching [--holdout] [--verbose]`. `--model` replays with the real Gemma extraction, embeddings and yes/no question (local only, needs MLX models).
+
+```jsonc
+{
+  "id": "t01-en-repeat-budget", "language": "en", "now": "...", "timeZone": "Europe/Oslo", "tags": ["repeat"],
+  "notes": [{ "id": "/note.md", "at": "ISO time the note was written", "content": "..." }],   // processed in order; an id may appear again for an edit
+  "userActions": [{ "after": 0, "quote": "text of the action", "op": "let-go|reject|done|undo|dismiss-completion" }],  // what the user did after note #after
+  "expected": {
+    "repeats": [{ "noteId": "...", "quote": "restating passage", "sameAs": { "noteId": "...", "quote": "earlier passage" } }],
+    "completions": [{ "noteId": "...", "quote": "evidence", "completes": { "noteId": "...", "quote": "action's passage" }, "auto": true }],
+    "stayClosed": [{ "noteId": "...", "quote": "passage that must not create or reopen an action" }],
+    "created": [{ "noteId": "...", "quote": "passage that must become its own new action (a recurring task)" }]
+  }
+}
+```
+
+Labels: `auto: true` only when a person would call the match unmistakable (same verb and object, same person, no rival). Quotes must appear exactly once in one version of their note and are matched by containment against the detector's passage. Reported: repeat precision and recall, completion precision and recall (auto or suggestion), auto-completion precision (target 0.97) and recall, wrong resurrections (must be 0) and recurring items that became new actions. The deterministic stage uses detector candidates scoring at least 0.45 as extracted items.

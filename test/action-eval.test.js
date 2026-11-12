@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import test from 'node:test'
 
+import { matchingBaselinePath, matchingCasesPath, matchingHoldoutPath, loadMatchingCases, scoreMatching, validateMatchingCases } from '../scripts/lib/action-eval-matching.js'
+import { AUTO_PRECISION_TARGET } from '../scripts/lib/action-eval-matching-report.js'
 import { baselinePathFor, compareToBaseline, createBaseline, defaultCasesPath, holdoutCasesPath, loadBaseline, loadCases, matchPredictions, scoreStage, stages, validateCases } from '../scripts/lib/action-eval.js'
 
 const tiny = {
@@ -143,8 +145,10 @@ test('compareToBaseline reports regressions and improvements beyond the toleranc
   assert.equal(small.status, 'unchanged', 'drops within the tolerance are not regressions')
 })
 
-test('unfinished stages fail with a clear message', async () => {
-  await assert.rejects(stages.completion.load(), /not implemented yet \(see #21\)/)
+test('the matching stage is registered as a scenario stage', () => {
+  assert.equal(stages.matching.scenarios, true)
+  assert.equal(stages.matching.local, false)
+  assert.equal(stages.completion, undefined)
 })
 
 const gated = new Set(['overall.recall', 'overall.precision', 'explicitPrecision.precision'])
@@ -165,3 +169,28 @@ test('baseline path follows the stage name', () => {
   assert.ok(baselinePathFor('detector').endsWith('test/fixtures/action-eval/baseline-detector.json'))
   assert.ok(existsSync(defaultCasesPath))
 })
+
+test('the matching scenarios are valid and cover hard negatives in both languages', async () => {
+  for (const file of [matchingCasesPath, matchingHoldoutPath]) assert.deepEqual(validateMatchingCases(await loadMatchingCases(file)), [], file)
+  const scenarios = await loadMatchingCases(matchingCasesPath)
+  assert.ok(scenarios.length >= 30)
+  assert.equal((await loadMatchingCases(matchingHoldoutPath)).length, 12)
+  const tags = new Set(scenarios.flatMap((item) => item.tags))
+  for (const tag of ['different-person', 'recurring', 'future-vs-past', 'partial', 'negated', 'other-person', 'letgo', 'rejected', 'undo', 'dismissed']) assert.ok(tags.has(tag), tag)
+  assert.ok(scenarios.some((item) => item.language === 'en') && scenarios.some((item) => item.language === 'no'))
+})
+
+const matchingGated = ['matching.repeats.precision', 'matching.repeats.recall', 'matching.completions.precision', 'matching.completions.recall', 'matching.autoCompletion.precision']
+
+for (const [label, holdout, casesPath] of [['main set', false, matchingCasesPath], ['held-out set', true, matchingHoldoutPath]]) {
+  test(`deterministic matching does not regress against its baseline (${label})`, async (t) => {
+    const baseline = await loadBaseline(matchingBaselinePath(holdout))
+    if (!baseline) return t.skip('no matching baseline yet; run `npm run eval:actions -- --stage matching --write-baseline`')
+    const metrics = await scoreMatching(await loadMatchingCases(casesPath), await stages.matching.load())
+    const comparison = compareToBaseline(metrics, baseline).filter((entry) => matchingGated.includes(entry.metric))
+    assert.equal(comparison.length, matchingGated.length, 'the baseline must contain the gated metrics')
+    assert.deepEqual(comparison.filter((entry) => entry.status === 'regression'), [], 'matching regressed (run npm run eval:actions -- --stage matching --verbose)')
+    assert.equal(metrics.matching.wrongResurrections, 0, 'nothing closed may come back')
+    assert.ok(metrics.matching.autoCompletion.precision >= AUTO_PRECISION_TARGET, 'auto-completion precision')
+  })
+}

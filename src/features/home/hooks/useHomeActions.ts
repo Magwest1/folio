@@ -178,8 +178,9 @@ export function useHomeActions({
         .catch(() => undefined)
         .finally(settle);
     };
-    // Keeping an item changes nothing visible, so there is nothing to take back.
-    showToast(toastLabel(mutation), mutation.type === "keep" ? undefined : takeBack);
+    // Keeping an item or dismissing a suggestion changes nothing visible, and taking back an undo is not offered.
+    const quiet = mutation.type === "keep" || mutation.type === "dismiss-completion" || mutation.type === "undo-auto";
+    showToast(toastLabel(mutation), quiet ? undefined : takeBack);
     try {
       const updated = await enqueue(id, () =>
         mutation.type === "edit"
