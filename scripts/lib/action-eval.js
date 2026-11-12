@@ -320,6 +320,8 @@ function trackedMetrics(metrics) {
     'overall.recall': metrics.overall?.recall,
     'overall.f1': metrics.overall?.f1,
     'explicitPrecision.precision': metrics.explicitPrecision?.precision,
+    'routing.suggestionPrecision': metrics.routing?.suggestionPrecision,
+    'routing.suggestionRecall': metrics.routing?.suggestionRecall,
     'completions.precision': metrics.completions?.precision,
     'completions.recall': metrics.completions?.recall,
   }
@@ -369,9 +371,8 @@ function notImplemented(stage, issue) {
  * `kindHint`, `person`, `time`, ...), so scoreStage works unchanged.
  *
  * Extension points:
- * - `model` (#17): load the candidate detector, run the Gemma micro-tasks, and return the final
- *   actions in the same shape (`kindHint` = derived kind, `time` = resolved date). It needs the
- *   MLX models, so it must be `local: true` and stay out of `npm test`.
+ * - `model` (#17): see action-eval-model.js. Runs the full extraction pipeline against a real MLX service and
+ *   maps the final items to this shape. It is `local: true` and stays out of `npm test`.
  * - `completion` (#21): will need its own scorer for completion/duplicate matching using
  *   `caseItem.completions`; register it here and give it a dedicated scoring function.
  */
@@ -390,8 +391,9 @@ export const stages = {
   model: {
     description: 'Gemma micro-task extraction on top of the detector (#17); local only, needs MLX models',
     local: true,
-    available: () => false,
-    load: notImplemented('model', '#17'),
+    available: () => true,
+    // Starts the MLX helper, so it is imported lazily and never by `npm test`.
+    load: async (options = {}) => (await import('./action-eval-model.js')).loadModelStage(options),
   },
   completion: {
     description: 'Completion and duplicate matching (#21)',

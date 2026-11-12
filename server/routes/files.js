@@ -421,6 +421,7 @@ app.patch('/api/note', async (request, response, next) => {
     const { newId, updated, currentRecords, warning } = updateResult
     if (hasContent || hasTitle || hasDescription) runtime.translation?.enqueue(newId)
     if (hasContent) reanchorNote(runtime, newId, updated.content)
+    if (hasContent) runtime.actions?.enqueue(newId)
     if (warning) void refreshMissingEmbeddingsInBackground()
     let historyWarning = null
     if (refreshEmbeddings === true || (hasMarkdownChanges && !contentAutosaveOnly)) {

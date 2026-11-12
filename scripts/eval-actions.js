@@ -2,7 +2,7 @@
 // Per-stage evaluation report for action extraction (issue #18).
 // Usage: node scripts/eval-actions.js [--stage detector] [--cases path | --holdout] [--baseline path]
 //   [--write-baseline] [--fail-on-regression] [--json] [--case id] [--verbose]
-//   [--model-id id] [--prompt-version v]
+//   [--model-id id] [--prompt-version v] [--no-embedding-filter] [--limit n]
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -23,6 +23,8 @@ const { values: options } = parseArgs({
     verbose: { type: 'boolean', default: false },
     'model-id': { type: 'string' },
     'prompt-version': { type: 'string' },
+    'no-embedding-filter': { type: 'boolean', default: false },
+    limit: { type: 'string' },
     help: { type: 'boolean', default: false },
   },
 })
@@ -34,7 +36,7 @@ const out = (line = '') => process.stdout.write(`${line}\n`)
 const fail = (message) => { process.stderr.write(`${message}\n`); process.exit(1) }
 
 if (options.help) {
-  out('node scripts/eval-actions.js [--stage detector|model|completion] [--cases path] [--baseline path] [--write-baseline] [--fail-on-regression] [--json] [--case id] [--verbose] [--model-id id] [--prompt-version v]')
+  out('node scripts/eval-actions.js [--stage detector|model|completion] [--cases path] [--baseline path] [--write-baseline] [--fail-on-regression] [--json] [--case id] [--verbose] [--model-id id] [--prompt-version v] [--no-embedding-filter] [--limit n]')
   process.exit(0)
 }
 
@@ -49,25 +51,31 @@ if (problems.length) {
   process.stderr.write(`Dataset has ${problems.length} problem(s):\n${problems.map((problem) => `  - ${problem}`).join('\n')}\n`)
   process.exit(1)
 }
-const cases = options.case ? allCases.filter((item) => item.id === options.case) : allCases
+const limit = options.limit === undefined ? null : Number(options.limit)
+if (limit !== null && !(Number.isInteger(limit) && limit > 0)) fail('--limit must be a positive integer.')
+const cases = (options.case ? allCases.filter((item) => item.id === options.case) : allCases).slice(0, limit ?? undefined)
 if (!cases.length) fail(`No case with id "${options.case}".`)
 
 let predict
 try {
-  predict = await stage.load()
+  predict = await stage.load({ embeddingFilter: !options['no-embedding-filter'], modelId: options['model-id'] })
 } catch (error) {
   fail(error.message)
 }
 const metrics = await scoreStage(cases, predict)
+const summary = predict.summary?.() ?? null
+if (summary) metrics.routing = summary.routing
+await predict.close?.()
+const baselineMeta = { modelId: summary?.modelId ?? options['model-id'], promptVersion: summary ? (await import('../server/actions/extraction/prompt.js')).PROMPT_VERSION : options['prompt-version'] }
 
 const baselinePath = options.baseline ?? baselinePathFor(options.stage, { holdout: isHoldout })
 const baseline = await loadBaseline(baselinePath)
-const comparison = baseline && !options.case ? compareToBaseline(metrics, baseline) : null
+const comparison = baseline && !options.case && !limit ? compareToBaseline(metrics, baseline) : null
 const regressions = comparison?.filter((entry) => entry.status === 'regression') ?? []
 
 if (options['write-baseline']) {
-  if (options.case) fail('Refusing to write a baseline from a single case.')
-  await fs.writeFile(baselinePath, `${JSON.stringify(createBaseline(options.stage, metrics, { modelId: options['model-id'], promptVersion: options['prompt-version'] }), null, 2)}\n`)
+  if (options.case || limit) fail('Refusing to write a baseline from a subset of the cases.')
+  await fs.writeFile(baselinePath, `${JSON.stringify(createBaseline(options.stage, metrics, baselineMeta), null, 2)}\n`)
 }
 
 if (options.json) {
@@ -85,6 +93,14 @@ if (options.json) {
   out('Detection (span overlap)')
   out(`  precision ${pct(metrics.overall.precision)}  recall ${pct(metrics.overall.recall)}  F1 ${pct(metrics.overall.f1)}   ${count(metrics.overall)}`)
   out(`  explicit precision ${pct(metrics.explicitPrecision.precision)}   (${metrics.explicitPrecision.correct}/${metrics.explicitPrecision.predicted} explicit predictions are explicit in the reference; the auto-add bar)`)
+  if (summary) {
+    const { routing } = summary
+    out(`Routing (model ${summary.modelId}, embedding filter ${summary.embeddingFilter ? 'on' : 'off'})`)
+    out(`  auto-add precision ${pct(routing.autoPrecision)} (${routing.auto.correct}/${routing.auto.predicted})  recall of explicit ${pct(routing.autoRecall)} (${routing.auto.found}/${routing.auto.expected})`)
+    out(`  suggestions precision ${pct(routing.suggestionPrecision)} (${routing.suggested.correct}/${routing.suggested.predicted})  recall of non-explicit ${pct(routing.suggestionRecall)} (${routing.suggested.found}/${routing.suggested.expected})`)
+    out(`  model calls/case ${routing.modelCallsPerCase?.toFixed(2)} (extra ${routing.extraCallsPerCase?.toFixed(2)})  mean latency/case ${Math.round(routing.meanLatencyMs)} ms  degraded spans ${routing.degraded}`)
+    out(`  drop reasons: ${Object.entries(routing.dropReasons).map(([reason, total]) => `${reason} ${total}`).join(', ') || 'none'}`)
+  }
   out('Completions (kindHint completion vs case.completions, for #21)')
   out(`  precision ${pct(metrics.completions.precision)}  recall ${pct(metrics.completions.recall)}  F1 ${pct(metrics.completions.f1)}   ${count(metrics.completions)}`)
   out('Field accuracy over matched pairs')
@@ -112,6 +128,13 @@ if (options.json) {
     }
   }
 
+  if ((options.verbose || options.case) && predict.records) {
+    out('Model drops and degraded spans')
+    for (const record of predict.records) {
+      for (const entry of record.dropped) out(`  DROP ${record.caseItem.id}  ${entry.reason}  ${JSON.stringify(entry.quote)}${entry.reason === 'model-error' || entry.reason === 'timeout' ? ` ${entry.detail}` : ''}`)
+      for (const entry of record.stats.degraded) out(`  DEGRADED ${record.caseItem.id}  ${entry.reason}: ${entry.message}`)
+    }
+  }
   out()
   if (options.case) out('Baseline comparison skipped (single case).')
   else if (!comparison) out(`No baseline at ${path.relative(process.cwd(), baselinePath)}; run with --write-baseline to create one.`)

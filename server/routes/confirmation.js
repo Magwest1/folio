@@ -221,6 +221,7 @@ app.post(['/api/filing/confirm', '/api/notes/confirm'], async (request, response
     }
     if (embeddingWarning) void refreshMissingEmbeddingsInBackground()
     runtime.translation?.enqueue(targetId)
+    runtime.actions?.enqueue(targetId)
     response.json({ note, notes: currentRecords.map(publicRecord), warning: embeddingWarning, oldId: receipt.id, newId: targetId, appended: receipt.confirmation.mode !== 'new', sourceRemoved, filing: confirmation, idempotent: false })
   } catch (error) {
     next(error)
