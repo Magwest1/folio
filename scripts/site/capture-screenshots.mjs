@@ -326,6 +326,91 @@ const steps = {
     await shotLightOnly('translate')
     await shotLightOnly('translate-crop', page, { clip: { x: 316, y: 0, width: 800, height: 650 } })
   },
+  async player() {
+    // Close-ups of the speaker player. Run together with the transcription step (`--only transcription,player`):
+    // that step creates, names and seeks the recording this one photographs.
+    await page.getByRole('tab', { name: /transcription/i }).click()
+    await sleep(600)
+    const mlx = page.locator('button[aria-expanded="true"]').filter({ hasText: /MLX/ }).first()
+    if (await mlx.count()) { await mlx.click(); await sleep(400) }
+    const panel = page.locator('.player-panel').first()
+    if (!(await panel.count())) { await page.locator('button.transcription-row-main').first().click(); await panel.waitFor() }
+    const lanes = page.locator('.player-lanes').first()
+    const lb = await lanes.boundingBox()
+    await page.mouse.click(lb.x + lb.width * 0.42, lb.y + lb.height / 2)
+    await sleep(1200)
+    await panel.evaluate((el) => { for (let p = el.parentElement; p; p = p.parentElement) if (p.scrollTop) p.scrollTop = 0 })
+    await sleep(400)
+    await settle()
+    await shotLightOnly('player', panel)
+  },
+  async imageTools() {
+    // Tight toolbar close-ups (hovered button ringed) plus the result panels they open. The demo bundle's caption and OCR
+    // caches are cleared first so the panels show fresh results instead of "(cached)".
+    for (const d of ['caption-cache', 'ocr-cache']) fs.rmSync(path.join(docs, 'Folio', 'bundle', '.folio', d), { recursive: true, force: true })
+    const marks = {}
+    for (const [note, button, panelLabel, name] of [[/Cardamom/i, 'Extract text', 'Extracted text', 'ocr'], [/Whiteboard sketch/i, 'Describe image', 'Image description', 'describe']]) {
+      await openNote(note)
+      await scrollNote(0)
+      await page.addStyleTag({ content: '.cm-live-markdown-image-resize{display:none!important}.cm-live-markdown-ocr-text{max-height:190px!important}' })
+      const img = page.locator('.cm-live-markdown-image-frame img').first()
+      await img.scrollIntoViewIfNeeded()
+      await img.hover()
+      await sleep(400)
+      const bar = page.getByRole('toolbar', { name: 'Image actions' }).first()
+      const btn = bar.getByRole('button', { name: button })
+      await btn.hover()
+      // Keep the toolbar shown through the theme switch that shotLightOnly performs.
+      await page.addStyleTag({ content: '.cm-live-markdown-image-toolbar{opacity:1!important;pointer-events:auto!important}' })
+      await btn.evaluate((el) => { el.style.outline = '2px solid #245ea8'; el.style.outlineOffset = '1px'; el.style.background = 'rgba(36,94,168,.14)' })
+      await sleep(400)
+      const tb = await bar.boundingBox(), bb = await btn.boundingBox()
+      const clip = { x: tb.x - 56, y: tb.y - 18, width: tb.width + 56 + 18, height: tb.height + 18 + 34 }
+      marks[name] = { button, pos: Number((((bb.x + bb.width / 2) - clip.x) / clip.width).toFixed(3)) }
+      await shotLightOnly(`${name}-toolbar`, page, { clip })
+      await btn.click()
+      const panel = page.getByLabel(panelLabel, { exact: true })
+      await panel.waitFor({ timeout: 300000 })
+      await sleep(1500)
+      await img.evaluate((el) => { el.scrollIntoView({ block: 'start' }); for (let p = el.parentElement; p; p = p.parentElement) if (p.scrollHeight > p.clientHeight + 20 && /auto|scroll/.test(getComputedStyle(p).overflowY)) { p.scrollTop += 34; break } })
+      await sleep(500)
+      const pb = await panel.boundingBox()
+      await shotLightOnly(`${name}-result`, page, { clip: { x: pb.x - 2, y: pb.y - 2, width: pb.width + 4, height: pb.height + 4 } })
+    }
+    console.log('toolbar button positions (fraction of crop width):', JSON.stringify(marks))
+  },
+  async translateToggle() {
+    await openNote(/Lumen-workshop/i)
+    await scrollNote(0)
+    const sw = page.getByRole('switch', { name: 'Auto-translate this note' })
+    if ((await sw.getAttribute('aria-checked')) !== 'true') await sw.click()
+    const grp = page.getByRole('group', { name: 'Note language' })
+    const go = async (wantEn) => {
+      // Norwegian is this note's original language, so "no" means no choice: press EN again to go back to the original.
+      const bt = grp.getByRole('button', { name: 'English' })
+      if (((await bt.getAttribute('aria-pressed')) === 'true') !== wantEn) await bt.click()
+      await page.waitForFunction(() => !/Translating|pending/i.test(document.body.innerText), null, { timeout: 120000 }).catch(() => {})
+      await sleep(2500)
+      await page.mouse.move(1000, 12)
+      await sleep(400)
+    }
+    const a = await sw.boundingBox(), g = await grp.boundingBox()
+    // Title row plus the controls (the description line under the title is cropped out), and the note body.
+    const head = { x: 316, y: 44, width: 800, height: 76 }
+    const body = { x: 316, y: 196, width: 800, height: 250 }
+    for (const [wantEn, tag] of [[false, 'no'], [true, 'en']]) {
+      await go(wantEn)
+      await page.evaluate(([x, y, w, h]) => {
+        const r = document.createElement('div')
+        r.id = 'capture-ring'
+        r.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:${w}px;height:${h}px;border:2px solid #245ea8;border-radius:10px;box-shadow:0 0 0 4px rgba(36,94,168,.18);pointer-events:none;z-index:99999`
+        document.body.append(r)
+      }, [a.x - 6, a.y - 6, g.x + g.width - a.x + 12, a.height + 12])
+      await shotLightOnly(`translate-toggle-${tag}`, page, { clip: head })
+      await page.evaluate(() => document.getElementById('capture-ring')?.remove())
+      await shotLightOnly(`translate-${tag}`, page, { clip: body })
+    }
+  },
   async translatedExport() {
     await openNote(/Lumen-workshop/i)
     await page.getByRole('button', { name: 'More actions', exact: true }).click()
@@ -342,7 +427,7 @@ const steps = {
     fs.copyFileSync(f, path.join(out, 'okf-note.md'))
   },
 }
-const order = ['hero', 'explorer', 'models', 'search', 'links', 'history', 'refile', 'export', 'filing', 'ask', 'transcription', 'ocr', 'describe', 'translate', 'translatedExport', 'okf']
+const order = ['hero', 'explorer', 'models', 'search', 'links', 'history', 'refile', 'export', 'filing', 'ask', 'transcription', 'player', 'ocr', 'describe', 'imageTools', 'translate', 'translateToggle', 'translatedExport', 'okf']
 export { steps }
 
 await prepare()

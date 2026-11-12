@@ -15,12 +15,8 @@
     <g transform="translate(85 0) skewX(-8)" fill="none" stroke="#b7d892" stroke-width="46" stroke-linecap="square" stroke-linejoin="miter"><path d="M290 700V330H500M290 510H460"/><path d="M580 700V470M580 545C580 495 615 468 660 468C710 468 740 500 740 552V700"/></g>
   </g>
   <text x="132" y="93" font-family="Inter Tight, Inter, sans-serif" font-size="34" font-weight="600" fill="#14171c">FolioNotes</text>
-  <text font-family="Inter Tight, Inter, sans-serif" font-size="68" font-weight="700" fill="#14171c" letter-spacing="-1"><tspan x="64" y="228">Local AI notes</tspan><tspan x="64" y="299">for your Mac.</tspan></text>
-  <rect x="64.5" y="398.500" width="425" height="48" rx="24" fill="#fff" stroke="#dde2ea"/>
-  <rect x="71" y="405" width="161" height="35" rx="17.500" fill="#245ea8"/>
-  <text x="85" y="430" font-family="JetBrains Mono, monospace" font-size="20" font-weight="500" fill="#fff">New in 0.11</text>
-  <text x="244" y="430" font-family="Inter, sans-serif" font-size="22" font-weight="500" fill="#14171c">Meetings and images</text>
-  <text font-family="Inter, sans-serif" font-size="27" fill="#566070"><tspan x="64" y="497">Speakers identified, images described,</tspan><tspan x="64" y="531">all on-device.</tspan></text>
+  <text font-family="Inter Tight, Inter, sans-serif" font-size="76" font-weight="700" fill="#14171c" letter-spacing="-1"><tspan x="64" y="246">Local AI notes</tspan><tspan x="64" y="325">for your Mac.</tspan></text>
+  <text font-family="Inter, sans-serif" font-size="27" fill="#566070"><tspan x="64" y="403">Speakers identified, images described,</tspan><tspan x="64" y="437">all on-device.</tspan></text>
   <g filter="url(#sh)"><rect x="630" y="130" width="600" height="475" rx="12" fill="#fff"/></g>
   <image href="screenshots/transcription-crop-light.webp" xlink:href="screenshots/transcription-crop-light.webp" x="630" y="130" width="600" height="475" clip-path="url(#r)"/>
   <rect x="630.500" y="130.500" width="599" height="474" rx="12" fill="none" stroke="#14171c" stroke-opacity=".08"/>

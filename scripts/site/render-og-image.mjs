@@ -23,16 +23,13 @@ body{width:1200px;height:630px;overflow:hidden;position:relative;background:#faf
 .dots{position:absolute;right:0;top:0;width:640px;height:630px;background-image:radial-gradient(rgba(20,23,28,.14) 1px,transparent 1.2px);background-size:22px 22px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 40%)}
 .brand{position:absolute;left:64px;top:56px;display:flex;align-items:center;gap:16px;font:600 34px "Inter Tight";letter-spacing:-.01em}
 .brand svg{border-radius:12px}
-h1{position:absolute;left:64px;top:170px;font:700 68px/1.04 "Inter Tight";letter-spacing:-.015em}
-.pill{position:absolute;left:64px;top:398px;display:inline-flex;align-items:center;gap:12px;padding:7px 20px 7px 7px;border:1px solid #dde2ea;border-radius:999px;background:#fff;font:500 22px Inter}
-.pill b{background:#245ea8;color:#fff;border-radius:999px;padding:4px 14px;font:500 20px "JetBrains Mono"}
-.sub{position:absolute;left:64px;top:470px;width:500px;font-size:27px;line-height:1.35;color:#566070;letter-spacing:-.01em}
+h1{position:absolute;left:64px;top:184px;font:700 76px/1.04 "Inter Tight";letter-spacing:-.015em}
+.sub{position:absolute;left:64px;top:376px;width:500px;font-size:27px;line-height:1.35;color:#566070;letter-spacing:-.01em}
 .win{position:absolute;left:630px;top:130px;width:600px;border-radius:12px;box-shadow:0 0 0 1px rgba(20,23,28,.08),0 1px 2px rgba(20,23,28,.06),0 24px 56px -22px rgba(20,23,28,.3);display:block}
 </style>
 <div class="dots"></div>
 <div class="brand">${mark}<span>FolioNotes</span></div>
 <h1>Local AI notes<br>for your Mac.</h1>
-<div class="pill"><b>New in 0.11</b>Meetings and images</div>
 <p class="sub">Speakers identified, images described, all on-device.</p>
 <img class="win" src="${shot}">`;
 

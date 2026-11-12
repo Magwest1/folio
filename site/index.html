@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FolioNotes — local AI notes for your Mac</title>
-<meta name="description" content="FolioNotes is a local-first Mac notetaker. One capture field, an on-device model files your notes as plain Markdown. Now with meeting recording, speaker identification, image descriptions, OCR and note translation, all on your Mac.">
+<meta name="description" content="FolioNotes is a local-first Mac notetaker. One capture field, an on-device model files your notes as plain Markdown. Record meetings with speaker names, read and describe your images, translate notes. All on your Mac.">
 <link rel="canonical" href="https://folionotes.no/">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#fafbfc">
@@ -12,14 +12,14 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="FolioNotes">
 <meta property="og:title" content="FolioNotes — local AI notes for your Mac">
-<meta property="og:description" content="Capture in one field. A local model files it as plain Markdown on your Mac. New: record and transcribe meetings with speaker names, describe images, OCR and translation.">
+<meta property="og:description" content="Capture in one field. A local model files it as plain Markdown on your Mac. Record meetings with speaker names, read and describe images, translate notes.">
 <meta property="og:url" content="https://folionotes.no/">
 <meta property="og:image" content="https://folionotes.no/assets/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="FolioNotes — local AI notes for your Mac">
-<meta name="twitter:description" content="Capture in one field. A local model files it as plain Markdown on your Mac. New: record and transcribe meetings with speaker names, describe images, OCR and translation.">
+<meta name="twitter:description" content="Capture in one field. A local model files it as plain Markdown on your Mac. Record meetings with speaker names, read and describe images, translate notes.">
 <meta name="twitter:image" content="https://folionotes.no/assets/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,16 +32,15 @@
 <header class="nav">
   <div class="nav-in">
     <a class="nav-brand" href="#top" aria-label="FolioNotes home"><svg class="mark" viewBox="0 0 1024 1024" width="22" height="22" aria-hidden="true"><rect width="1024" height="1024" rx="220" fill="#161816"/><rect x="190" y="190" width="644" height="644" fill="none" stroke="#b7d892" stroke-width="28"/><g transform="translate(85 0) skewX(-8)" fill="none" stroke="#b7d892" stroke-width="46" stroke-linecap="square" stroke-linejoin="miter"><path d="M290 700V330H500M290 510H460"/><path d="M580 700V470M580 545C580 495 615 468 660 468C710 468 740 500 740 552V700"/></g></svg><span>FolioNotes</span></a>
-    <nav aria-label="Primary"><ul><li><a href="#overview">Overview</a></li><li><a href="#new">New in 0.11</a></li><li><a href="#features">Features</a></li><li><a href="#privacy">Privacy</a></li><li><a href="#specs">Requirements</a></li><li><a href="#faq">FAQ</a></li></ul></nav>
+    <nav aria-label="Primary"><ul><li><a href="#overview">Overview</a></li><li><a href="#ai">AI features</a></li><li><a href="#features">Features</a></li><li><a href="#privacy">Privacy</a></li><li><a href="#specs">Requirements</a></li><li><a href="#faq">FAQ</a></li></ul></nav>
     <a class="nav-dl" href="https://github.com/magwest1/folio/releases/latest/download/FolioNotes-arm64.dmg">Download</a>
   </div>
 </header>
 <main id="main">
 <section class="hero" id="top">
   <div class="hero-text">
-    <a class="pill" href="#new"><b>New in 0.11</b> Meetings and images</a>
     <h1>Capture once.<br>Your Mac files it.</h1>
-    <p class="sub">One Markdown capture field. A model running on your Mac decides where each note goes. Everything stays as plain files in a folder you own.</p>
+    <p class="sub">Type it once. Your Mac decides where it goes. Everything stays as plain files in a folder you own.</p>
     <div class="cta"><a class="btn btn-primary" href="https://github.com/magwest1/folio/releases/latest/download/FolioNotes-arm64.dmg"><svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>Download for Mac</a><a class="btn btn-secondary" href="https://github.com/magwest1/folio">View on GitHub<svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M8 7h9v9"/></svg></a></div>
     <p class="fine">Apple Silicon · macOS 14 or later</p>
     <p class="fine"><span id="release-info" hidden></span> <a href="https://github.com/magwest1/folio/releases">All releases</a></p>
@@ -53,7 +52,7 @@
 <section class="band statement" id="overview" aria-labelledby="st-h">
   <div class="wrap center" id="privacy">
     <h2 id="st-h" class="huge m reveal">Your notes stay<br>on your Mac.</h2>
-    <p class="lead reveal">Filing, search, answers, transcription, speaker identification, image descriptions, OCR and translation all run on models stored on your machine. No account, no cloud service, no analytics.</p>
+    <p class="lead reveal">Filing, search, answers, meetings, images and translation all run on your Mac. No account. No cloud. No analytics.</p>
     <dl class="stats reveal">
       <div><dt>accounts</dt><dd>0</dd></div>
       <div><dt>cloud services</dt><dd>0</dd></div>
@@ -64,53 +63,61 @@
 </section>
 
 <section class="band alt" id="filing" aria-labelledby="filing-h"><div class="wrap look split">
-<div class="look-text reveal"><p class="eyebrow">Local LLM filing</p><h2 id="filing-h">One field. The model files it. You confirm.</h2><p>Press <kbd>Cmd</kbd> <kbd>Enter</kbd> and the selected local model reads the whole note and proposes a path, title, type and tags. Every capture stays one note; it is never split apart.</p><ul class="ticks"><li>Reuses your existing folders and tags instead of inventing new ones</li><li>Todos append to one todo list, daily notes to a note per day</li><li>Nothing is saved until you accept the proposal</li></ul></div>
+<div class="look-text reveal"><p class="eyebrow">Local LLM filing</p><h2 id="filing-h">One field. Filed for you.</h2><p>Write or paste, then press <kbd>Cmd</kbd> <kbd>Enter</kbd>. FolioNotes proposes a folder, title and tags. You say yes.</p><ul class="ticks"><li>Reuses your folders and tags</li><li>Todos land on one list, daily notes get a page per day</li><li>Nothing is saved until you accept</li></ul></div>
 <div class="look-media reveal"><img src="assets/screenshots/filing-dialog-light.webp" alt="The filing dialog proposing a path, title, type and tags for a note" width="1176" height="842" loading="lazy" decoding="async"></div></div></section>
 
-<section class="band" id="new" aria-labelledby="new-h">
+<section class="band" id="ai" aria-labelledby="meet-h"><div class="wrap look split">
+<div class="look-text reveal"><p class="eyebrow">On-device AI</p><h2 id="meet-h">Record it. Know who said what.</h2><p>Hit record on a call or drop in a file. Your Mac turns it into a transcript and labels every speaker. The audio never leaves your Mac.</p><ul class="ticks"><li><strong>A lane for every voice.</strong> See who spoke and when.</li><li><strong>Name them once.</strong> Every mention follows.</li><li><strong>Jump to any turn,</strong> or solo one speaker.</li><li><strong>Fix a wrong label</strong> in a click.</li></ul></div>
+<div class="look-media reveal"><img src="assets/screenshots/player-light.webp" class="tall" alt="The meeting player: play controls, one timeline lane per speaker with a playhead, colored speaker chips, a Merge speakers button and the current turn with Speaker, Split and Merge buttons" width="550" height="780" loading="lazy" decoding="async"></div></div></section>
+
+<section class="band alt" id="images" aria-labelledby="img-h">
   <div class="wrap">
-    <div class="new-head reveal"><p class="eyebrow">New in 0.11</p><h2 id="new-h" class="section-h">Meetings and images, understood on your Mac.</h2></div>
-    <div class="pair">
-      <article class="card reveal">
-        <h3>Record a meeting. Know who said what.</h3>
-        <p>Record the microphone, or in the desktop app also system audio, or import a file. Whisper transcribes on your Mac with a <code>[mm:ss]</code> timestamp on every paragraph.</p>
-        <ul class="ticks"><li>With the optional Sortformer model, up to 4 speakers are identified on-device</li><li>Rename or merge speakers; names are note variables, so every reference follows</li><li>Play the recording back in sync, jump between turns or solo one speaker</li></ul>
-        <p class="fine">Whisper large-v3-turbo about 1.61 GB, Sortformer about 236 MB. Both are optional downloads. System audio needs macOS 14.2 or later.</p>
-        <img src="assets/screenshots/transcription-crop-light.webp" alt="A meeting transcript with named speaker turns beside the player, which shows one lane per speaker, a playhead and speaker chips" width="2248" height="1782" loading="lazy" decoding="async">
+    <div class="new-head reveal"><p class="eyebrow">On-device AI</p><h2 id="img-h" class="section-h">Your images, understood.</h2><p class="lead sub-lead">Hover any image in a note. Two buttons do the rest.</p></div>
+    <div class="pair halves">
+      <article class="card half reveal">
+        <h3>Read the text.</h3>
+        <p>Recipe cards, slides, receipts, screenshots. Turn the words in a photo into text you can edit and search.</p>
+        <figure class="step"><figcaption><b>1</b> Click <em>Extract text</em></figcaption><div class="tool" style="--pos:71.4%"><span class="tool-label">Extract text</span><img src="assets/screenshots/ocr-toolbar-light.webp" alt="Close-up of the image toolbar over a recipe card photo: Copy, Download, Delete, Extract text (highlighted) and Describe image icons" width="440" height="172" loading="lazy" decoding="async"></div></figure>
+        <figure class="step"><figcaption><b>2</b> Copy it or insert it below</figcaption><img src="assets/screenshots/ocr-result-light.webp" alt="The extracted recipe text as Markdown with Copy, Insert below and Close buttons" width="1410" height="498" loading="lazy" decoding="async"></figure>
       </article>
-      <article class="card reveal">
-        <h3>See what is in your images.</h3>
-        <p>Choose Describe image in an image toolbar and a local vision model writes a short description for you to copy, insert below the image or use as alt text.</p>
-        <ul class="ticks"><li>Gemma 4 E4B or Qwen 3.5 4B, chosen in Settings &rarr; Models; no extra download if it is already installed</li><li>Descriptions are cached and searchable, like text extracted with LightOnOCR 3 1B</li><li>OCR tables become Markdown tables, and Download image saves the file</li></ul>
-        <p class="fine">Runs through MLX on your Mac. The image never leaves it.</p>
-        <img src="assets/screenshots/describe-crop-light.webp" alt="A whiteboard photo in a note with a generated image description below it and Copy, Insert below, Use as alt text and Close buttons" width="1514" height="1282" loading="lazy" decoding="async">
+      <article class="card half reveal">
+        <h3>Describe the picture.</h3>
+        <p>Whiteboards, sketches, photos. Get a short description for alt text, or so you can find the image later.</p>
+        <figure class="step"><figcaption><b>1</b> Click <em>Describe image</em></figcaption><div class="tool" style="--pos:84.1%"><span class="tool-label">Describe image</span><img src="assets/screenshots/describe-toolbar-light.webp" alt="Close-up of the image toolbar over a whiteboard sketch: Copy, Download, Delete, Extract text and Describe image (highlighted) icons" width="440" height="172" loading="lazy" decoding="async"></div></figure>
+        <figure class="step"><figcaption><b>2</b> Copy it, insert it, or use it as alt text</figcaption><img src="assets/screenshots/describe-result-light.webp" alt="A generated description of the whiteboard with Copy, Insert below, Use as alt text and Close buttons" width="1410" height="448" loading="lazy" decoding="async"></figure>
       </article>
     </div>
+    <p class="fine center reveal">Extracted text and descriptions are searchable. The image never leaves your Mac.</p>
   </div>
 </section>
 
-<section class="band alt" id="translate" aria-labelledby="translate-h"><div class="wrap look split flip">
-<div class="look-text reveal"><p class="eyebrow">Translation</p><h2 id="translate-h">Read it in your language.</h2><p>Turn on auto-translate for a note and read it in Norwegian or English with one toggle. The translated view is read-only and stays current in the background.</p><ul class="ticks"><li>Code, links and formatting are preserved</li><li>Translate and export notes and local drafts to English, Norwegian Bokm&aring;l, German, Spanish, French, Italian, Swedish or Danish</li><li>Uses your selected local generation model</li></ul></div>
-<div class="look-media reveal"><img src="assets/screenshots/translate-crop-light.webp" class="wide" alt="A note with the NO/EN toggle in its header showing a translated, read-only English view" width="1600" height="1300" loading="lazy" decoding="async"></div></div></section>
+<section class="band" id="translate" aria-labelledby="translate-h"><div class="wrap look">
+<div class="look-text reveal"><p class="eyebrow">Translation</p><h2 id="translate-h">Read it in your language.</h2><p>Flip a switch and any note reads in Norwegian or English. Your original stays untouched.</p></div>
+<div class="pair ba">
+<figure class="ba-item reveal"><figcaption><span>Before</span> Norwegian original</figcaption><div class="frame"><img src="assets/screenshots/translate-toggle-no-light.webp" alt="Note header with the auto-translate switch on and NO selected, title Møtenotater: Lumen-workshop med Solvik-teamet i Bergen" width="1600" height="152" loading="lazy" decoding="async"><img src="assets/screenshots/translate-no-light.webp" alt="The note body in Norwegian: Deltakere, Bakgrunn, Hovedpunkter" width="1600" height="500" loading="lazy" decoding="async"></div></figure>
+<figure class="ba-item reveal"><figcaption><span class="on">After</span> Press EN, read it in English</figcaption><div class="frame"><img src="assets/screenshots/translate-toggle-en-light.webp" alt="The same note header with EN selected, title Meeting notes: Lumen workshop with Solvik team in Bergen" width="1600" height="152" loading="lazy" decoding="async"><img src="assets/screenshots/translate-en-light.webp" alt="The same note body in English: Participants, Background, Main points" width="1600" height="500" loading="lazy" decoding="async"></div></figure>
+</div>
+<ul class="ticks inline reveal"><li>Code, links and formatting stay intact</li><li>Export notes to 8 languages</li><li>Runs on your Mac</li></ul>
+</div></section>
 
 <section class="band alt" id="search" aria-labelledby="search-h"><div class="wrap look split flip">
-<div class="look-text reveal"><p class="eyebrow">Search and Ask</p><h2 id="search-h">Find it, or ask it.</h2><p>Search combines metadata, lifecycle, relationships, keywords and EmbeddingGemma embeddings, including text extracted from and descriptions of your images. It never loads the larger answer model.</p><p>Ask uses the model you selected to write a grounded answer with links to the notes it cites.</p></div>
+<div class="look-text reveal"><p class="eyebrow">Search and Ask</p><h2 id="search-h">Find it, or ask it.</h2><p>Search by meaning or by keyword, images included. Ask for a written answer with links to the notes behind it.</p></div>
 <div class="look-media reveal"><div class="duo"><img src="assets/screenshots/search-pane-light.webp" alt="Hybrid search results across notes" width="618" height="1706" loading="lazy" decoding="async"><img src="assets/screenshots/ask-pane-light.webp" alt="An Ask answer with citations linking to local notes" width="618" height="1706" loading="lazy" decoding="async"></div></div></div></section>
 
 <section class="band" id="features" aria-labelledby="feat-h">
   <div class="wrap">
     <h2 id="feat-h" class="section-h reveal">And everything around it.</h2>
     <ul class="more compact reveal">
-      <li><h3>Record meetings</h3><p>Microphone, or in the desktop app also system audio on macOS 14.2 or later, for online calls. Import AAC, AIFF, FLAC, M4A, MP3 or WAV too.</p></li>
-      <li><h3>Timestamped transcripts</h3><p>Whisper large-v3-turbo writes an editable note. Playback follows the <code>[mm:ss]</code> timestamps.</p></li>
-      <li><h3>Note variables</h3><p>Define <code>key:: value</code> once and reuse <code>{{key}}</code> in the note, search and exports. Speaker names work this way.</p></li>
-      <li><h3>Image tools</h3><p>Extract text, describe, copy and download from the image toolbar. Tables from OCR become Markdown.</p></li>
+      <li><h3>Record meetings</h3><p>Capture the mic or an online call, or import an audio file.</p></li>
+      <li><h3>Timestamped transcripts</h3><p>An editable note that plays back in sync.</p></li>
+      <li><h3>Note variables</h3><p>Define a value once, reuse it everywhere. Speaker names too.</p></li>
+      <li><h3>Image tools</h3><p>Extract text, describe, copy and download, right from the image.</p></li>
       <li><h3>Version history</h3><p>Every note keeps earlier versions you can restore. Refiling keeps the history.</p></li>
       <li><h3>Links and backlinks</h3><p>Indexed from Markdown links and sources. Related notes become links only when you confirm.</p></li>
-      <li><h3>Small local models</h3><p>Qwen 3.5 4B, Llama 3.2 3B Instruct or Gemma 4 E4B through MLX, plus EmbeddingGemma for search.</p></li>
+      <li><h3>Small local models</h3><p>Pick the model that fits your Mac. Swap any time.</p></li>
       <li><h3>Markdown and PDF export</h3><p>Export filed notes and local drafts, optionally translated.</p></li>
       <li><h3>Lifecycle states</h3><p>Draft, stable or deprecated, with a stale-after date.</p></li>
-      <li><h3>Multiple bundles</h3><p>Separate note collections, switchable in Settings. Back up from Settings or copy the folder.</p></li>
+      <li><h3>Multiple bundles</h3><p>Keep work and personal apart. Back up from Settings.</p></li>
       <li><h3>Familiar shortcuts</h3><p>Cmd+B, Cmd+I, Cmd+K, Cmd+Shift+F and more. Click a tag to filter exactly.</p></li>
       <li><h3>Open storage</h3><p>Plain Markdown with frontmatter in a folder you own. Any editor or agent can read it.</p></li>
     </ul>
