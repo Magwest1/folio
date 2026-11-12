@@ -1,0 +1,1111 @@
+[
+  {
+    "id": "ho-01",
+    "language": "en",
+    "source": "capture",
+    "now": "2026-05-13T07:50:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "call the plumber tomorrow about the dripping tap\nthe cat keeps knocking the plant over",
+    "expected": [
+      {
+        "quote": "call the plumber tomorrow about the dripping tap",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "date": "2026-05-14"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture",
+      "deadline"
+    ]
+  },
+  {
+    "id": "ho-02",
+    "language": "en",
+    "source": "note",
+    "now": "2026-04-21T16:40:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Trying to make sense of the last month.\n\nI keep saying yes to things because it feels rude not to. The audit, the onboarding buddy thing, the Thursday reading group, Kasper's side project. None of it is bad on its own, but together it eats every evening and I have stopped running altogether. Maybe I should stop checking Slack after eight. My sister says I sound like I did in 2019, which is not a compliment.\n\nThe honest answer is that I can't do the Q3 audit properly and also keep my team's roadmap alive. I'll tell Rhea on Wednesday that she needs to find someone else for the audit. Everything else can survive another month, I think.\n\nSlept badly again. Need to get outside more.",
+    "expected": [
+      {
+        "quote": "I'll tell Rhea on Wednesday that she needs to find someone else for the audit.",
+        "kind": "my-commitment",
+        "person": "Rhea",
+        "due": {
+          "date": "2026-04-22"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "long",
+      "buried",
+      "deadline",
+      "hypothetical"
+    ]
+  },
+  {
+    "id": "ho-03",
+    "language": "en",
+    "source": "note",
+    "now": "2026-01-08T10:05:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "# Vendor review, 8 Jan\n\nPresent: Imani, Tobias, Wen, me\n\n- Wen walked through the three quotes. The second one is cheapest but has no support SLA.\n- Tobias will send the revised budget by Friday.\n- Decision: we go with option two if they add a support clause.\n- I'll share the deck with Imani once it's cleaned up.\n- Next review: Tuesday at 2pm, room Fjord.",
+    "expected": [
+      {
+        "quote": "I'll share the deck with Imani once it's cleaned up.",
+        "kind": "my-commitment",
+        "person": "Imani",
+        "due": null,
+        "explicit": false
+      },
+      {
+        "quote": "Next review: Tuesday at 2pm, room Fjord.",
+        "kind": "event",
+        "person": null,
+        "due": {
+          "date": "2026-01-13",
+          "time": "14:00"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "meeting",
+      "event",
+      "other-person",
+      "negative"
+    ]
+  },
+  {
+    "id": "ho-04",
+    "language": "en",
+    "source": "transcript",
+    "now": "2027-02-16T11:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "speaker1:: Speaker 1\nspeaker2:: Speaker 2\n\n**{{speaker1}}** [00:12]\nOkay, so the licence renewal. Nobody at the vendor has answered since last Thursday. Could you send me the updated floor plan at some point?\n\n**{{speaker2}}** [00:47]\nSure. I can chase them. I'll email Gareth tomorrow morning and copy you in. I did try the support line twice yesterday but it just rings out.\n\n**{{speaker1}}** [01:30]\nPerfect. If that fails we'll escalate through procurement.",
+    "expected": [
+      {
+        "quote": "I'll email Gareth tomorrow morning and copy you in.",
+        "kind": "my-commitment",
+        "person": "Gareth",
+        "due": {
+          "date": "2027-02-17"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "transcript",
+      "no-owner",
+      "question",
+      "hypothetical"
+    ]
+  },
+  {
+    "id": "ho-05",
+    "language": "en",
+    "source": "transcript",
+    "now": "2026-08-27T08:10:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "[00:04] ok recording, it's the end of the summer so let me just dump everything.\n\n[00:21] the domain for the old site is about to lapse and I have to renew it by the end of the month or we lose the name.\n\n[00:49] also the weather has been properly awful lately.\n\n[01:12] I think that's all.",
+    "expected": [
+      {
+        "quote": "I have to renew it by the end of the month or we lose the name.",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "window": {
+            "start": "2026-08-31",
+            "end": "2026-08-31"
+          }
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "transcript",
+      "deadline"
+    ]
+  },
+  {
+    "id": "ho-06",
+    "language": "en",
+    "source": "note",
+    "now": "2026-10-23T09:00:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Weekend in Edinburgh\n\n- [x] passport\n- [x] print boarding passes\n- [ ] phone charger and adapter\n- [ ] rain jacket\n- [ ] book the airport train\n- [x] cancel the milk delivery",
+    "expected": [
+      {
+        "quote": "- [ ] phone charger and adapter",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      },
+      {
+        "quote": "- [ ] rain jacket",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      },
+      {
+        "quote": "- [ ] book the airport train",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "checkbox",
+      "completion",
+      "negative"
+    ],
+    "completions": [
+      {
+        "quote": "- [x] passport"
+      },
+      {
+        "quote": "- [x] print boarding passes"
+      },
+      {
+        "quote": "- [x] cancel the milk delivery"
+      }
+    ]
+  },
+  {
+    "id": "ho-07",
+    "language": "en",
+    "source": "note",
+    "now": "2026-04-21T16:40:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Pasted from inbox:\n\n> From: Dana Whitfield\n> Subject: Re: Venue contract\n>\n> Hi, thanks for the call earlier. I'll send over the revised contract on Monday. Could you confirm the catering numbers by Thursday?\n> Best, Dana\n\nI need to reply to Dana with the catering numbers by Thursday. The contract part is her side.",
+    "expected": [
+      {
+        "quote": "I need to reply to Dana with the catering numbers by Thursday.",
+        "kind": "task",
+        "person": "Dana",
+        "due": {
+          "date": "2026-04-23"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "deadline",
+      "quote",
+      "other-person",
+      "negative"
+    ]
+  },
+  {
+    "id": "ho-08",
+    "language": "en",
+    "source": "note",
+    "now": "2026-05-13T07:50:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Status, week 20\n\nWe shipped the auth migration on Tuesday and nobody noticed, which is the goal. Search indexing is at about 80%. Still waiting on Priya for the staging credentials, so the export tests are stuck. I will finish the export endpoint by Friday regardless and test against mocks.",
+    "expected": [
+      {
+        "quote": "Still waiting on Priya for the staging credentials, so the export tests are stuck.",
+        "kind": "waiting-on",
+        "person": "Priya",
+        "due": null,
+        "explicit": false
+      },
+      {
+        "quote": "I will finish the export endpoint by Friday regardless and test against mocks.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": {
+          "date": "2026-05-15"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "waiting",
+      "deadline",
+      "completion",
+      "past-tense",
+      "negative"
+    ],
+    "completions": [
+      {
+        "quote": "We shipped the auth migration on Tuesday and nobody noticed, which is the goal."
+      }
+    ]
+  },
+  {
+    "id": "ho-09",
+    "language": "en",
+    "source": "note",
+    "now": "2026-01-08T10:05:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Skipping the Tuesday standup this week, I won't be able to make it. I don't need to prepare anything for the board, Sven already handled the slides. Not going to renew the gym membership. No plans to reply to that thread.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "negation"
+    ]
+  },
+  {
+    "id": "ho-10",
+    "language": "en",
+    "source": "note",
+    "now": "2027-02-16T11:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "If the landlord agrees to a shorter lease, we could move out in June. We might look at flats near the park. It would be nice to repaint the hallway first, but that's probably wishful thinking. Could always ask Jo whether the sofa is still for sale.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "hypothetical"
+    ]
+  },
+  {
+    "id": "ho-11",
+    "language": "en",
+    "source": "note",
+    "now": "2026-03-26T12:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Should I call Mum this weekend? When is the dentist appointment again, the 14th or the 15th? Did Jonas ever send the keys back? What do we still owe the accountant?",
+    "expected": [],
+    "tags": [
+      "negative",
+      "question"
+    ]
+  },
+  {
+    "id": "ho-12",
+    "language": "en",
+    "source": "note",
+    "now": "2026-08-27T08:10:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Notes from the call:\n\nAnna said, \"I will fix the build tonight,\" but it was still red this morning. The client wrote back \"we'll sign on Friday\" which I'll believe when I see it.\n\n> Remember to drink water and stretch every hour.\n> Always back up before you migrate.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "quote",
+      "other-person"
+    ]
+  },
+  {
+    "id": "ho-13",
+    "language": "en",
+    "source": "note",
+    "now": "2026-12-29T13:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Retry wrapper I keep forgetting about:\n\n```js\n// TODO: remove this hack before release\nasync function withRetry(fn) {\n  for (let i = 0; i < 3; i++) {\n    try { return await fn() } catch { await sleep(500) } // wait for the server\n  }\n}\n```\n\nRun `git checkout -b fix/login-retry` and then `npm test` to try it.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "code",
+      "reference-imperative"
+    ]
+  },
+  {
+    "id": "ho-14",
+    "language": "en",
+    "source": "note",
+    "now": "2026-10-23T09:00:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Party prep: Mina is going to book the venue and Carlos will handle the invitations. Leila promised to bring the projector on Saturday. Jonas has to sort out the music.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "other-person"
+    ]
+  },
+  {
+    "id": "ho-15",
+    "language": "en",
+    "source": "note",
+    "now": "2026-04-21T16:40:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Family history notes. The company was founded on 3 March 1998 and moved to Oslo in 2004. On Friday 14 June 2019 we signed the first big customer. The original deadline for the merger was 1 December 2021, but it slipped to spring.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "history-date",
+      "past-tense"
+    ]
+  },
+  {
+    "id": "ho-16",
+    "language": "en",
+    "source": "note",
+    "now": "2026-05-13T07:50:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Pancakes (Gran's version)\n\n1. Whisk 2 eggs with 3 dl milk.\n2. Add the flour and a pinch of salt, then stir until smooth.\n3. Let the batter rest for 30 minutes.\n4. Fry in butter over medium heat, about two minutes per side.\n\nServes four.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "reference-imperative"
+    ]
+  },
+  {
+    "id": "ho-17",
+    "language": "en",
+    "source": "note",
+    "now": "2026-03-26T12:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Would love to learn pottery at some point. Someday I want to hike the Kungsleden end to end. Really ought to be better at sleeping. One day we'll have a house with a proper garden.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "hypothetical"
+    ]
+  },
+  {
+    "id": "ho-18",
+    "language": "en",
+    "source": "capture",
+    "now": "2026-10-23T09:00:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Dentist on Tuesday at 08:15, Storgata 12.\nParking is awful around there.",
+    "expected": [
+      {
+        "quote": "Dentist on Tuesday at 08:15, Storgata 12.",
+        "kind": "event",
+        "person": null,
+        "due": {
+          "date": "2026-10-27",
+          "time": "08:15"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture",
+      "event"
+    ]
+  },
+  {
+    "id": "ho-19",
+    "language": "en",
+    "source": "capture",
+    "now": "2027-02-16T11:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Spoke to Kofi yesterday and he confirmed the delivery date.\nFollow up with Lena about the unpaid invoice next week.",
+    "expected": [
+      {
+        "quote": "Follow up with Lena about the unpaid invoice next week.",
+        "kind": "follow-up",
+        "person": "Lena",
+        "due": {
+          "window": {
+            "start": "2027-02-22",
+            "end": "2027-02-28"
+          }
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture",
+      "follow-up",
+      "week-window",
+      "completion",
+      "past-tense",
+      "negative"
+    ],
+    "completions": [
+      {
+        "quote": "Spoke to Kofi yesterday and he confirmed the delivery date."
+      }
+    ]
+  },
+  {
+    "id": "ho-20",
+    "language": "en",
+    "source": "capture",
+    "now": "2026-01-08T10:05:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "remember to renew the passport in two weeks\nthe printer jammed again",
+    "expected": [
+      {
+        "quote": "remember to renew the passport in two weeks",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "date": "2026-01-22"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture",
+      "deadline"
+    ]
+  },
+  {
+    "id": "ho-21",
+    "language": "en",
+    "source": "capture",
+    "now": "2026-04-21T16:40:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "TODO: submit the expense report by 30 April\nlunch with Aino was lovely, she looks well",
+    "expected": [
+      {
+        "quote": "TODO: submit the expense report by 30 April",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "date": "2026-04-30"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "capture",
+      "todo-marker",
+      "deadline"
+    ]
+  },
+  {
+    "id": "ho-22",
+    "language": "en",
+    "source": "capture",
+    "now": "2026-03-26T12:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Still waiting for the electrician to confirm a date.\nThe hallway light is flickering again.",
+    "expected": [
+      {
+        "quote": "Still waiting for the electrician to confirm a date.",
+        "kind": "waiting-on",
+        "person": null,
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture",
+      "waiting"
+    ]
+  },
+  {
+    "id": "ho-23",
+    "language": "en",
+    "source": "note",
+    "now": "2026-12-29T13:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Drafting the year-end wrap-up. I'll send the summary to Hanna on 2 January, before she's back in the office. The Christmas party went well and the venue was great.",
+    "expected": [
+      {
+        "quote": "I'll send the summary to Hanna on 2 January, before she's back in the office.",
+        "kind": "my-commitment",
+        "person": "Hanna",
+        "due": {
+          "date": "2027-01-02"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "deadline",
+      "year-boundary",
+      "past-tense",
+      "negative"
+    ]
+  },
+  {
+    "id": "ho-24",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-03-26T12:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "ring rørlegger i morgen om kranen på badet\nkaffen er snart tom",
+    "expected": [
+      {
+        "quote": "ring rørlegger i morgen om kranen på badet",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "date": "2026-03-27"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture",
+      "deadline"
+    ]
+  },
+  {
+    "id": "ho-25",
+    "language": "no",
+    "source": "note",
+    "now": "2026-01-08T10:05:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Kveld og hodet er fullt.\n\nJeg har sagt ja til alt for mange ting siden før jul. Styret i borettslaget, dugnaden, Ellens bursdag, og så prosjektet på jobben som egentlig ikke har en eier. Jeg merker at jeg er sliten og at jeg ikke har hatt en helg for meg selv på måneder. Kanskje jeg burde si nei oftere. Mamma sier hun ser det på meg.\n\nEtter å ha tenkt på det hele dagen er svaret ganske enkelt: jeg rekker ikke begge deler. Jeg skal si fra til Silje på onsdag at hun må finne en annen til prosjektet. Resten klarer seg.\n\nSov dårlig igjen.",
+    "expected": [
+      {
+        "quote": "Jeg skal si fra til Silje på onsdag at hun må finne en annen til prosjektet.",
+        "kind": "my-commitment",
+        "person": "Silje",
+        "due": {
+          "date": "2026-01-14"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "long",
+      "buried",
+      "deadline",
+      "hypothetical"
+    ]
+  },
+  {
+    "id": "ho-26",
+    "language": "no",
+    "source": "note",
+    "now": "2026-05-13T07:50:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "# Møtereferat – oppstart nettbutikk\n\nTil stede: Kari, Ola, Bente og meg\n\n- Kari tar kontakt med leverandøren om frakt.\n- Ola ser på betalingsløsningen og melder fra neste gang.\n- Vi ble enige om å utsette lanseringen til høsten.\n- Jeg sender referatet til alle innen fredag.\n- Neste møte tirsdag kl. 10.",
+    "expected": [
+      {
+        "quote": "Jeg sender referatet til alle innen fredag.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": {
+          "date": "2026-05-15"
+        },
+        "explicit": true
+      },
+      {
+        "quote": "Neste møte tirsdag kl. 10.",
+        "kind": "event",
+        "person": null,
+        "due": {
+          "date": "2026-05-19",
+          "time": "10:00"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "meeting",
+      "deadline",
+      "event",
+      "other-person",
+      "negative"
+    ]
+  },
+  {
+    "id": "ho-27",
+    "language": "no",
+    "source": "transcript",
+    "now": "2026-08-27T08:10:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "speaker1:: Speaker 1\nspeaker2:: Speaker 2\n\n**{{speaker1}}** [00:09]\nSå, prisen fra taklegger. Hadde vi egentlig bestemt noe om når arbeidet skal starte?\n\n**{{speaker2}}** [00:38]\nNei, ikke helt. Jeg ringer Trond i morgen og hører hva han kan tilby. Vi snakket om dette allerede i fjor, men da ble det ikke noe.\n\n**{{speaker1}}** [01:15]\nBra. Da tar vi det derfra.",
+    "expected": [
+      {
+        "quote": "Jeg ringer Trond i morgen og hører hva han kan tilby.",
+        "kind": "my-commitment",
+        "person": "Trond",
+        "due": {
+          "date": "2026-08-28"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "transcript",
+      "no-owner",
+      "question"
+    ]
+  },
+  {
+    "id": "ho-28",
+    "language": "no",
+    "source": "transcript",
+    "now": "2026-10-23T09:00:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "[00:03] ok tar opp, skal bare få ut litt av hodet.\n\n[00:17] skattemeldingen for selskapet er ikke levert ennå, og jeg må levere den om to uker, ellers blir det gebyr.\n\n[00:52] været har vært helt håpløst i hele oktober.",
+    "expected": [
+      {
+        "quote": "jeg må levere den om to uker, ellers blir det gebyr.",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "date": "2026-11-06"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "transcript",
+      "deadline"
+    ]
+  },
+  {
+    "id": "ho-29",
+    "language": "no",
+    "source": "note",
+    "now": "2026-04-21T16:40:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Pakkeliste for helgen på hytta\n\n- [x] sovepose\n- [ ] ullsokker\n- [ ] hodelykt\n- [x] fylle bensin\n- [ ] ta med kortstokken",
+    "expected": [
+      {
+        "quote": "- [ ] ullsokker",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      },
+      {
+        "quote": "- [ ] hodelykt",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      },
+      {
+        "quote": "- [ ] ta med kortstokken",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "checkbox",
+      "completion",
+      "negative"
+    ],
+    "completions": [
+      {
+        "quote": "- [x] sovepose"
+      },
+      {
+        "quote": "- [x] fylle bensin"
+      }
+    ]
+  },
+  {
+    "id": "ho-30",
+    "language": "no",
+    "source": "note",
+    "now": "2026-01-08T10:05:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Limt inn fra e-posten:\n\n> Fra: Henrik Dahl\n> Emne: Tilbud lagerhall\n>\n> Hei, takk for sist. Jeg sender et oppdatert tilbud tirsdag. Kan du si fra om du vil ha med montering?\n\nJeg må svare Henrik innen mandag om montering. Resten av tilbudet er hans sak.",
+    "expected": [
+      {
+        "quote": "Jeg må svare Henrik innen mandag om montering.",
+        "kind": "task",
+        "person": "Henrik",
+        "due": {
+          "date": "2026-01-12"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "deadline",
+      "quote",
+      "other-person",
+      "negative"
+    ]
+  },
+  {
+    "id": "ho-31",
+    "language": "no",
+    "source": "note",
+    "now": "2027-02-16T11:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Handleliste\n\n- melk\n- havregryn\n- smør\n- hundemat\n- bursdagskort til farmor\n\nhusk å ta med handlenett",
+    "expected": [
+      {
+        "quote": "husk å ta med handlenett",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture",
+      "negative"
+    ]
+  },
+  {
+    "id": "ho-32",
+    "language": "no",
+    "source": "note",
+    "now": "2026-05-13T07:50:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Status uke 20\n\nVi leverte designskissene til kunden tirsdag, og de var fornøyde. Venter fortsatt på tilbakemelding fra Marit om budsjettet. Jeg skal ferdigstille rapporten innen torsdag. Testingen går bra så langt.",
+    "expected": [
+      {
+        "quote": "Venter fortsatt på tilbakemelding fra Marit om budsjettet.",
+        "kind": "waiting-on",
+        "person": "Marit",
+        "due": null,
+        "explicit": false
+      },
+      {
+        "quote": "Jeg skal ferdigstille rapporten innen torsdag.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": {
+          "date": "2026-05-14"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "waiting",
+      "deadline",
+      "completion",
+      "past-tense",
+      "negative"
+    ],
+    "completions": [
+      {
+        "quote": "Vi leverte designskissene til kunden tirsdag, og de var fornøyde."
+      }
+    ]
+  },
+  {
+    "id": "ho-33",
+    "language": "no",
+    "source": "note",
+    "now": "2026-12-29T13:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Jeg skal ikke på julebordet i år. Trenger ikke å kjøpe gave til Per, vi ble enige om å droppe det. Har ingen planer om å svare på den tråden. Jeg kommer ikke til å rekke møtet.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "negation"
+    ]
+  },
+  {
+    "id": "ho-34",
+    "language": "no",
+    "source": "note",
+    "now": "2026-08-27T08:10:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Kanskje vi kunne reise til Lofoten neste sommer. Hvis det blir fint vær kan jeg ta en tur til hytta. Det hadde vært fint å male stua før jul, men det blir nok ikke noe av. Vi kunne jo spurt Ingrid om å være med.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "hypothetical"
+    ]
+  },
+  {
+    "id": "ho-35",
+    "language": "no",
+    "source": "note",
+    "now": "2026-10-23T09:00:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Husker du å ringe tannlegen? Hvem skal hente Emil fra fotballen på mandag? Når må skattemeldingen leveres egentlig? Skal vi kjøpe ny sofa?",
+    "expected": [],
+    "tags": [
+      "negative",
+      "question"
+    ]
+  },
+  {
+    "id": "ho-36",
+    "language": "no",
+    "source": "note",
+    "now": "2026-03-26T12:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Mamma sa: «Jeg kommer på søndag, ta det rolig med middagen.» Det ble ikke noe av.\n\n> Husk å ta pause hvert 25. minutt\n> Skriv ned tre ting du er takknemlig for",
+    "expected": [],
+    "tags": [
+      "negative",
+      "quote",
+      "other-person"
+    ]
+  },
+  {
+    "id": "ho-37",
+    "language": "no",
+    "source": "note",
+    "now": "2026-04-21T16:40:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Midlertidig fiks for innloggingen:\n\n```js\n// TODO: fjern denne løsningen før lansering\nif (!session) {\n  redirect('/login') // send brukeren til innlogging\n}\n```\n\nKjør `npm run dev` og åpne localhost:5173 for å teste.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "code",
+      "reference-imperative"
+    ]
+  },
+  {
+    "id": "ho-38",
+    "language": "no",
+    "source": "note",
+    "now": "2026-01-08T10:05:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Til festen: Ola skal bestille pizza, og Ida tar med drikke. Mamma lovet å passe katten i helgen. Bjørn må huske å hente trappestigen.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "other-person"
+    ]
+  },
+  {
+    "id": "ho-39",
+    "language": "no",
+    "source": "note",
+    "now": "2026-05-13T07:50:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Huset ble bygget i 1962 og pusset opp i 1987. Vi flyttet inn 1. august 2015. Den 17. mai 2020 var det ingen tog i Oslo. Fristen for søknaden var 15. mars i fjor.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "history-date",
+      "past-tense"
+    ]
+  },
+  {
+    "id": "ho-40",
+    "language": "no",
+    "source": "note",
+    "now": "2027-02-16T11:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Vafler\n\nRør sammen egg og sukker. Tilsett mel og melk, og bland godt. La røren hvile i 20 minutter. Stek i vaffeljernet til de er gylne.\n\nGir cirka åtte vafler.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "reference-imperative"
+    ]
+  },
+  {
+    "id": "ho-41",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-04-21T16:40:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Tannlegetime torsdag kl. 14.30, Kirkeveien 5.\nparkering er alltid vanskelig der",
+    "expected": [
+      {
+        "quote": "Tannlegetime torsdag kl. 14.30, Kirkeveien 5.",
+        "kind": "event",
+        "person": null,
+        "due": {
+          "date": "2026-04-23",
+          "time": "14:30"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture",
+      "event"
+    ]
+  },
+  {
+    "id": "ho-42",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-03-26T12:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Følge opp Jonas om kontrakten neste uke.\nkaffemaskinen er ødelagt igjen",
+    "expected": [
+      {
+        "quote": "Følge opp Jonas om kontrakten neste uke.",
+        "kind": "follow-up",
+        "person": "Jonas",
+        "due": {
+          "window": {
+            "start": "2026-03-30",
+            "end": "2026-04-05"
+          }
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture",
+      "follow-up",
+      "week-window"
+    ]
+  },
+  {
+    "id": "ho-43",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-08-27T08:10:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Sendte søknaden til kommunen i forrige uke. Leverte bøkene på biblioteket mandag. Har ikke begynt på skattemeldingen ennå.",
+    "expected": [],
+    "tags": [
+      "capture",
+      "negative",
+      "completion",
+      "past-tense",
+      "negation"
+    ],
+    "completions": [
+      {
+        "quote": "Sendte søknaden til kommunen i forrige uke."
+      },
+      {
+        "quote": "Leverte bøkene på biblioteket mandag."
+      }
+    ]
+  },
+  {
+    "id": "ho-44",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-01-08T10:05:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Kontoen er nesten tom etter julen.\nJeg skal betale husleien innen slutten av måneden, ellers får jeg purring igjen.",
+    "expected": [
+      {
+        "quote": "Jeg skal betale husleien innen slutten av måneden, ellers får jeg purring igjen.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": {
+          "window": {
+            "start": "2026-01-31",
+            "end": "2026-01-31"
+          }
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "capture",
+      "deadline"
+    ]
+  },
+  {
+    "id": "ho-45",
+    "language": "no",
+    "source": "note",
+    "now": "2026-10-23T09:00:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Lang uke. Jobben har vært hektisk, og jeg har knapt snakket med noen utenom kollegene. Det slo meg i dag at jeg ikke har hørt noe fra Vigdis siden sommeren, og hun var den som hjalp meg da pappa var syk. Jeg tenker mye på det. Kanskje det er for sent å ta kontakt nå.\n\nI går ryddet jeg endelig ut av kjellerboden, og det føltes godt. Jeg lovet å ringe Vigdis på lørdag, og denne gangen tar jeg det ikke tilbake. Så får vi se hva som skjer.",
+    "expected": [
+      {
+        "quote": "Jeg lovet å ringe Vigdis på lørdag, og denne gangen tar jeg det ikke tilbake.",
+        "kind": "my-commitment",
+        "person": "Vigdis",
+        "due": {
+          "date": "2026-10-24"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "long",
+      "buried",
+      "deadline",
+      "completion",
+      "past-tense",
+      "hypothetical"
+    ],
+    "completions": [
+      {
+        "quote": "I går ryddet jeg endelig ut av kjellerboden, og det føltes godt."
+      }
+    ]
+  },
+  {
+    "id": "ho-46",
+    "language": "mixed",
+    "source": "capture",
+    "now": "2026-04-21T16:40:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Meeting med Sam på Teams fredag kl 15 om nye pricing. Husk å sende agenda før det.",
+    "expected": [
+      {
+        "quote": "Meeting med Sam på Teams fredag kl 15 om nye pricing.",
+        "kind": "event",
+        "person": "Sam",
+        "due": {
+          "date": "2026-04-24",
+          "time": "15:00"
+        },
+        "explicit": false
+      },
+      {
+        "quote": "Husk å sende agenda før det.",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "mixed",
+      "capture",
+      "event"
+    ]
+  },
+  {
+    "id": "ho-47",
+    "language": "mixed",
+    "source": "note",
+    "now": "2026-01-08T10:05:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Parcel notice came this morning. I need to pick up the parcel from Posten by Monday. I'll ask Åse about the spare key when she's back from Tromsø.",
+    "expected": [
+      {
+        "quote": "I need to pick up the parcel from Posten by Monday.",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "date": "2026-01-12"
+        },
+        "explicit": true
+      },
+      {
+        "quote": "I'll ask Åse about the spare key when she's back from Tromsø.",
+        "kind": "my-commitment",
+        "person": "Åse",
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "mixed",
+      "deadline"
+    ]
+  },
+  {
+    "id": "ho-48",
+    "language": "mixed",
+    "source": "transcript",
+    "now": "2026-12-29T13:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "[00:06] ok, kort notat etter møtet.\n\n[00:20] I'll send Henrik the figures tomorrow.\n\n[00:31] Så skal jeg ringe Kari på mandag, hun vet mer om kontrakten.\n\n[00:50] Det var alt for nå.",
+    "expected": [
+      {
+        "quote": "I'll send Henrik the figures tomorrow.",
+        "kind": "my-commitment",
+        "person": "Henrik",
+        "due": {
+          "date": "2026-12-30"
+        },
+        "explicit": true
+      },
+      {
+        "quote": "Så skal jeg ringe Kari på mandag, hun vet mer om kontrakten.",
+        "kind": "my-commitment",
+        "person": "Kari",
+        "due": {
+          "date": "2027-01-04"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "mixed",
+      "transcript",
+      "deadline",
+      "year-boundary"
+    ]
+  }
+]

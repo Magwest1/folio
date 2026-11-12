@@ -19,6 +19,7 @@
     "test:ui": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:local": "playwright test --config=playwright.local.config.ts",
+    "eval:actions": "node scripts/eval-actions.js",
     "benchmark:history": "node scripts/benchmark-history.js",
     "desktop": "npm run build:mlx && npm run build && electron .",
     "build:mlx": "bash experiments/mlx-swift/Scripts/build-native.sh",
