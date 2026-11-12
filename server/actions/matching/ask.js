@@ -34,7 +34,7 @@ export async function askCompletion(generate, sentence, task, { timeoutMs = 60_0
   if (!generate) return false
   let timer
   try {
-    const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), timeoutMs); timer.unref?.() })
+    const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), timeoutMs) })
     const response = await Promise.race([Promise.resolve().then(() => generate(buildCompletionMessages(sentence, task), { maxTokens: 24, temperature: 0 })), timeout])
     return parseCompletionAnswer(typeof response === 'string' ? response : response?.text)
   } catch { return false } finally { clearTimeout(timer) }
