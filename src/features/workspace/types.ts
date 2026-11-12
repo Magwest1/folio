@@ -8,6 +8,7 @@ import type { FilingFields, FilingQueueEntry } from "./model/filing.ts";
 import type { NoteExportFormat } from "./model/note-export.ts";
 import type { TranslatedExportDeliver } from "./model/translated-export.ts";
 import type { RefileEntries, RefileFields } from "./model/refile.ts";
+import type { HomeWorkspaceBindings } from "../home/model/home-bindings.ts";
 
 export type TabDrag = { documentId: string; groupId: string };
 export type MetadataField = "title" | "description";
@@ -53,6 +54,7 @@ export type EditorWorkspaceActions = {
   pinTab: (groupId: string, documentId: string) => void;
   consumeEditorFocusRequest: (requestId: number) => void;
   createNewTab: (targetGroupId?: string) => void;
+  openHome?: (targetGroupId?: string) => void;
   splitWorkspace: () => void;
   closeGroup: (groupId: string) => void;
   closeTab: (groupId: string, documentId: string) => void;
@@ -114,6 +116,7 @@ export type EditorWorkspaceActions = {
 
 export type EditorWorkspaceProps = {
   model: EditorWorkspaceModel;
+  home?: HomeWorkspaceBindings;
   actions: EditorWorkspaceActions;
   historyPreview?: {
     groupId: string;

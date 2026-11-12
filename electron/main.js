@@ -191,6 +191,7 @@ function setApplicationMenu() {
       label: 'File',
       submenu: [
         { label: 'New Note', accelerator: 'CmdOrCtrl+T', click: sendToRenderer('new-note') },
+        { label: 'Home', accelerator: 'CmdOrCtrl+Shift+H', click: sendToRenderer('open-home') },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: sendToRenderer('save') },
         {
           label: 'Export',

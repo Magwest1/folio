@@ -9,6 +9,7 @@ import {
   type WorkspaceSessionState,
 } from "../model/workspace-state.ts";
 import { writeStorageItem } from "../../../lib/storage.ts";
+import { isHomeTabId } from "../../home/model/home-tab.ts";
 
 type UseWorkspaceSessionPersistenceOptions = {
   initialState: WorkspaceSessionState | null;
@@ -170,7 +171,7 @@ export function useWorkspaceSessionPersistence({
     setWorkspaceRestored(true);
     const noteIds = new Set(notes.map((note) => note.id));
     const activeDocuments = reconciled.groups.flatMap((group) =>
-      group.activeId
+      group.activeId && !isHomeTabId(group.activeId)
         ? [{ id: group.activeId, source: noteIds.has(group.activeId) ? ("note" as const) : ("file" as const) }]
         : [],
     );

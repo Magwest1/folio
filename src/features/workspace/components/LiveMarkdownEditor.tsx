@@ -25,6 +25,7 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
+import { REVEAL_PASSAGE_EVENT, type PassageRevealDetail } from "../../../lib/passage-reveal.ts";
 import { applyFormatMarker, type FormatMarker } from "../../../markdown-format.ts";
 import {
   changeLiveMarkdownListIndentation,
@@ -475,7 +476,23 @@ export function LiveMarkdownEditor({
     view.contentDOM.addEventListener("folio-select-list-content", selectListContent);
     view.contentDOM.addEventListener("blur", blur);
     view.contentDOM.addEventListener("focus", focus);
+    const revealPassage = (event: Event) => {
+      const { from, to, quote } = (event as CustomEvent<PassageRevealDetail>).detail;
+      const doc = view.state.doc;
+      let start = from;
+      let end = to;
+      // The note may have been edited since the action was anchored, so trust the quote over the offsets.
+      if (!quote || end > doc.length || doc.sliceString(start, end) !== quote) {
+        start = doc.toString().indexOf(quote);
+        end = start + quote.length;
+      }
+      if (!quote || start < 0) return;
+      const range = EditorSelection.range(start, end);
+      view.dispatch({ selection: range, effects: EditorView.scrollIntoView(range, { y: "center" }) });
+      view.focus();
+    };
     host.addEventListener("folio-find", find);
+    host.addEventListener(REVEAL_PASSAGE_EVENT, revealPassage);
     viewRef.current = view;
     return () => {
       if (compositionFrameRef.current !== null) window.cancelAnimationFrame(compositionFrameRef.current);
@@ -490,6 +507,7 @@ export function LiveMarkdownEditor({
       view.contentDOM.removeEventListener("blur", blur);
       view.contentDOM.removeEventListener("focus", focus);
       host.removeEventListener("folio-find", find);
+      host.removeEventListener(REVEAL_PASSAGE_EVENT, revealPassage);
       view.destroy();
       viewRef.current = null;
     };
@@ -621,6 +639,7 @@ export function LiveMarkdownEditor({
     <div
       className={["live-markdown-editor", containerClassName].filter(Boolean).join(" ")}
       data-live-markdown-editor=""
+      data-document-id={documentId}
       data-read-only={readOnly ? "" : undefined}
       ref={hostRef}
     />

@@ -8,6 +8,7 @@ import type {
 } from "../../../domain/types.ts";
 import { api, apiForBundle, getActiveBundleId } from "../../../lib/api.ts";
 import { isUntitledId } from "../../../lib/workspace.ts";
+import { isHomeTabId } from "../../home/model/home-tab.ts";
 import type { WorkspaceDocumentState } from "./useWorkspaceDocumentState.ts";
 import {
   activateGroupTab,
@@ -215,6 +216,8 @@ export function useWorkspaceDocumentNavigation({
   }
 
   async function loadDocument(id: string, source: "note" | "file" = "file") {
+    // Home is a tab, not a document, so there is nothing to fetch.
+    if (isHomeTabId(id)) return;
     if (state.documents[id] || state.loadingDocuments.has(id)) return;
     const bundleId = getActiveBundleId();
     const mutationSequence = state.documentMutationSequence.current;

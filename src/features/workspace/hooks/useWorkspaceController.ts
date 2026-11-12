@@ -30,6 +30,8 @@ import { loadWorkspaceSessionState, parseWorkspaceSessionState, reconcileWorkspa
 import { readStorageItem, writeStorageItem } from "../../../lib/storage.ts";
 import { useBundleSetup } from "../../settings/hooks/useBundleSetup.ts";
 import { useTranscription } from "../../transcription/hooks/useTranscription.ts";
+import { useHomeWorkspace } from "../../home/hooks/useHomeWorkspace.ts";
+import { isHomeTabId, preferUnfinishedDraft } from "../../home/model/home-tab.ts";
 
 function draftTitle(content: string) {
   const firstLine = filedDraftContent(content)
@@ -447,13 +449,15 @@ export function useWorkspaceController(): WorkspaceShellProps {
       const stored = readStorageItem(`folio:workspace-state:v2:${bundleId}`);
       const parsedStored = stored ? JSON.parse(stored) as { state?: unknown; expandedDirectories?: string[]; splitPosition?: number } : null;
       const restored = parseWorkspaceSessionState(parsedStored?.state || parsedStored);
-      const reconciled = restored
+      const draftContents = new Map(drafts.map((draft) => [draft.id, draft.content]));
+      // Restoring never lands on Home over an unfinished draft; an empty workspace shows Home as its empty state.
+      const reconciled = preferUnfinishedDraft(restored
         ? reconcileWorkspaceSessionState(restored, new Set([
           ...notes.map((note) => note.id),
           ...files.map((file) => file.id),
           ...drafts.map((draft) => draft.id),
         ]))
-        : { groups: [{ id: "primary", tabs: [], activeId: null, previewId: null }], activeGroupId: "primary" };
+        : { groups: [{ id: "primary", tabs: [], activeId: null, previewId: null }], activeGroupId: "primary" }, (id) => draftContents.get(id));
       tabs.setGroups(reconciled.groups);
       tabs.setActiveGroupId(reconciled.activeGroupId);
       explorer.setSidebarMode(restored?.sidebarMode || "explore");
@@ -548,6 +552,10 @@ export function useWorkspaceController(): WorkspaceShellProps {
         ? null
         : current,
     );
+    if (isHomeTabId(documentId)) {
+      tabs.closeTab(groupId, documentId);
+      return;
+    }
     const content = documents.drafts[documentId] ?? documents.documents[documentId]?.content ?? "";
     if (isUntitledId(documentId) && !content.trim()) {
       void navigation.deleteLocalDraft(documentId);
@@ -580,6 +588,33 @@ export function useWorkspaceController(): WorkspaceShellProps {
     const timeout = window.setTimeout(() => setMessage(""), 3_000);
     return () => window.clearTimeout(timeout);
   }, [message]);
+
+  const requestEditorFocus = useCallback((groupId: string, documentId: string) => {
+    setEditorFocusRequest({ id: ++editorFocusRequestIdRef.current, groupId, documentId });
+  }, []);
+  const home = useHomeWorkspace({
+    bundleId: persistenceBundleId,
+    notes: explorer.notes,
+    files: explorer.files,
+    documents: documents.documents,
+    groups: tabs.groups,
+    activeGroupId: tabs.activeGroupId,
+    setGroups: tabs.setGroups,
+    setActiveGroupId: tabs.setActiveGroupId,
+    createDraft: (groupId, content) => {
+      setEditorFocusRequest(null);
+      return tabs.createNewTab(groupId, content);
+    },
+    fileDraft: fileDraftAfterAutosave,
+    rememberSelection: session.rememberDocumentSelection,
+    openNote: (id, groupId) => {
+      setActiveFileRevealRequest((request) => request + 1);
+      setEditorFocusRequest(null);
+      void finalizeAllFiledDocuments();
+      return navigation.openDocument(id, "note", groupId);
+    },
+    requestFocus: requestEditorFocus,
+  });
 
   useWorkspaceShortcutActions({
     sidebarMode: explorer.sidebarMode,
@@ -615,6 +650,7 @@ export function useWorkspaceController(): WorkspaceShellProps {
         format,
       ),
     openSettings,
+    openHome: () => home.openHome(),
   });
 
   const { sidebar, moveBundleFile, reindexBundle } = useWorkspaceSidebarProps({
@@ -710,6 +746,7 @@ export function useWorkspaceController(): WorkspaceShellProps {
       resetRightPane: () => layout.setRightPaneWidth(null),
     },
     editor: {
+      home: home.bindings,
       model: {
         groups: tabs.groups,
         splitPosition: layout.splitPosition,
@@ -768,6 +805,7 @@ export function useWorkspaceController(): WorkspaceShellProps {
           setEditorFocusRequest(null);
           tabs.createNewTab(targetGroupId);
         },
+        openHome: (targetGroupId) => home.openHome(targetGroupId),
         splitWorkspace: () => {
           setEditorFocusRequest(null);
           tabs.splitWorkspace();

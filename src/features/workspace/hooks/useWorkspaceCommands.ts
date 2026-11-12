@@ -17,6 +17,7 @@ export type WorkspaceShortcutAction =
   | "export-markdown"
   | "export-pdf"
   | "open-settings"
+  | "open-home"
   | `switch-tab-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`
   | FormatMarker;
 
@@ -51,6 +52,7 @@ const MENU_ACTIONS = new Set<string>([
   "export-markdown",
   "export-pdf",
   "open-settings",
+  "open-home",
   ...Object.values(TAB_SHORTCUTS),
 ]);
 
@@ -77,6 +79,12 @@ export function useWorkspaceCommands({
       if (event.key.toLowerCase() === "f") {
         event.preventDefault();
         runShortcutRef.current?.(event.shiftKey ? "search" : "find-in-note");
+        return;
+      }
+      // Cmd/Ctrl+Shift+H reopens Home. No other shortcut uses H.
+      if (event.shiftKey && event.key.toLowerCase() === "h") {
+        event.preventDefault();
+        runShortcutRef.current?.("open-home");
         return;
       }
       if (event.shiftKey) return;

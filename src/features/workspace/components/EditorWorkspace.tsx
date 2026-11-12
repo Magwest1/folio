@@ -5,8 +5,9 @@ import { EditorGroup } from "./EditorGroup.tsx";
 import type { EditorWorkspaceProps } from "../types.ts";
 import { WorkspaceSplitHandle } from "./WorkspaceSplitHandle.tsx";
 import { filingOwnerGroupIds } from "../model/filing.ts";
+import { isHomeTabId } from "../../home/model/home-tab.ts";
 
-export function EditorWorkspace({ model, actions, paneControls, historyPreview }: EditorWorkspaceProps) {
+export function EditorWorkspace({ model, actions, home, paneControls, historyPreview }: EditorWorkspaceProps) {
   const ui = useWorkspaceEditorUi();
   const owners = filingOwnerGroupIds(
     model.groups,
@@ -37,6 +38,7 @@ export function EditorWorkspace({ model, actions, paneControls, historyPreview }
     pinTab: actions.pinTab,
     consumeEditorFocusRequest: actions.consumeEditorFocusRequest,
     createNewTab: actions.createNewTab,
+    openHome: actions.openHome,
     splitWorkspace: actions.splitWorkspace,
     closeGroup: actions.closeGroup,
     closeTab: actions.closeTab,
@@ -90,6 +92,8 @@ export function EditorWorkspace({ model, actions, paneControls, historyPreview }
             model={groupModel}
             actions={groupActions}
             ui={ui}
+            home={home}
+            homeShownElsewhere={model.groups.some((other) => other.id !== group.id && isHomeTabId(other.activeId))}
             historyPreview={historyPreview?.groupId === group.id && historyPreview.documentId === group.activeId ? historyPreview : undefined}
             paneControls={paneControls ? {
               ...paneControls,

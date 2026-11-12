@@ -270,3 +270,50 @@ export type TranslatedExportJob = {
   content?: string;
   error?: string;
 };
+export type ActionStatus = "suggested" | "open" | "snoozed" | "done" | "let-go" | "rejected" | "faded";
+export type ActionKind = "task" | "my-commitment" | "waiting-on" | "follow-up" | "event";
+export type ActionOrigin = "auto" | "suggested" | "manual" | "todo-list";
+export type ActionDue =
+  | { date: string; time?: string }
+  | { window: { start: string; end: string } };
+export type ActionAnchor = {
+  noteId: string | null;
+  from: number;
+  to: number;
+  quote: string;
+  orphaned: boolean;
+  version?: string | number | null;
+};
+export type ActionHistoryEntry = {
+  at: string;
+  from: ActionStatus;
+  to: ActionStatus;
+  by: string;
+  snoozedUntil?: string | null;
+};
+export type ActionItem = {
+  id: string;
+  text: string;
+  kind: ActionKind;
+  person: string | null;
+  due: ActionDue | null;
+  status: ActionStatus;
+  snoozedUntil: string | null;
+  explicit: boolean;
+  origin: ActionOrigin;
+  editedByUser: boolean;
+  anchor: ActionAnchor | null;
+  createdAt: string;
+  updatedAt: string;
+  touchedAt: string;
+  history: ActionHistoryEntry[];
+};
+export type ActionTransition =
+  | "confirm"
+  | "complete"
+  | "reopen"
+  | "snooze"
+  | "let-go"
+  | "reject"
+  | "undo";
+export type ActionPatch = Partial<Pick<ActionItem, "text" | "kind" | "person" | "due">>;
