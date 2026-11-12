@@ -8,7 +8,8 @@ export type HomeMutation =
   | { type: "snooze"; until: string; label: string }
   | { type: "not-important" }
   | { type: "not-an-action" }
-  | { type: "edit"; patch: ActionPatch }
+  /** `label` words the undo toast, for example when a card is moved to another day. */
+  | { type: "edit"; patch: ActionPatch; label?: string }
   | { type: "remove-auto-added" };
 
 export const TRANSITION_FOR: Record<Exclude<HomeMutation["type"], "edit">, ActionTransition> = {
@@ -45,7 +46,7 @@ export function toastLabel(mutation: HomeMutation): string {
     case "not-an-action":
       return "Noted. It isn't an action.";
     case "edit":
-      return "Saved.";
+      return mutation.label ?? "Saved.";
     case "remove-auto-added":
       return "Removed. It won't come back.";
   }

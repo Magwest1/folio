@@ -102,11 +102,6 @@ export function shortDate(dateKey: string): string {
   return `${day} ${MONTHS[month - 1]}`;
 }
 
-/** "Mon 24 Nov" */
-export function shortWeekdayDate(dateKey: string): string {
-  return `${weekdayName(dateKey).slice(0, 3)} ${shortDate(dateKey)}`;
-}
-
 function offsetAt(instant: number, timeZone: string): number {
   const parts = zonedParts(new Date(instant), timeZone);
   const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);

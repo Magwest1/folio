@@ -7,8 +7,8 @@ import {
   TRANSITION_FOR,
   type HomeMutation,
 } from "../model/action-mutations.ts";
-import { groupHomeActions, type HomeSections } from "../model/home-sections.ts";
 import { deviceTimeZone } from "../model/home-time.ts";
+import { buildWeekBoard, type WeekBoard } from "../model/week-board.ts";
 
 export type HomeToast = {
   key: number;
@@ -78,10 +78,11 @@ export function useHomeActions({
     const epoch = epochRef.current;
     lastRefreshRef.current = Date.now();
     try {
-      const [active, faded] = await Promise.all([fetchActions(), fetchActions({ status: ["faded"] })]);
+      // Done items come along so the ones finished today can stay on the board until tomorrow.
+      const [active, quiet] = await Promise.all([fetchActions(), fetchActions({ status: ["faded", "done"] })]);
       // A change made while this request was in flight is newer than the response.
       if (epoch !== epochRef.current || pendingRef.current > 0) return;
-      commit(() => [...active, ...faded]);
+      commit(() => [...active, ...quiet]);
       setClock(nowRef.current());
       setLoaded(true);
       setUnavailable(false);
@@ -176,10 +177,7 @@ export function useHomeActions({
     }
   }, [commit, enqueue, settle, showToast]);
 
-  const sections: HomeSections = useMemo(
-    () => groupHomeActions(actions, clock, timeZone),
-    [actions, clock, timeZone],
-  );
+  const board: WeekBoard = useMemo(() => buildWeekBoard(actions, clock, timeZone), [actions, clock, timeZone]);
 
-  return { actions, sections, loaded, unavailable, toasts, run, refresh, refreshSoon, dismissToast, timeZone, clock };
+  return { actions, board, loaded, unavailable, toasts, run, refresh, refreshSoon, dismissToast, timeZone, clock };
 }

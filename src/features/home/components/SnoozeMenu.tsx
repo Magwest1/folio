@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { SnoozePreset } from "../model/snooze-presets.ts";
 
 type SnoozeMenuProps = {
@@ -11,15 +11,35 @@ type SnoozeMenuProps = {
 /** Three plain choices. Typing a date in words comes later. */
 export function SnoozeMenu({ presets, label, onPick, onClose }: SnoozeMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
+
+  /** Pinned to the button, so a scrolling board or a narrow column never clips it. */
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    const anchor = menu?.parentElement?.getBoundingClientRect();
+    if (!menu || !anchor) return;
+    const { width, height } = menu.getBoundingClientRect();
+    const below = anchor.bottom + 4;
+    menu.style.top = `${below + height > window.innerHeight - 8 ? Math.max(8, anchor.top - height - 4) : below}px`;
+    menu.style.left = `${Math.max(8, Math.min(anchor.right - width, window.innerWidth - width - 8))}px`;
+  }, []);
 
   useEffect(() => {
-    menuRef.current?.querySelector<HTMLElement>("button")?.focus();
+    menuRef.current?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
     const away = (event: MouseEvent) => {
-      if (event.target instanceof Node && !menuRef.current?.contains(event.target)) onClose();
+      if (event.target instanceof Node && !menuRef.current?.contains(event.target)) closeRef.current();
     };
+    const scrolled = () => closeRef.current();
     document.addEventListener("mousedown", away);
-    return () => document.removeEventListener("mousedown", away);
-  }, [onClose]);
+    document.addEventListener("scroll", scrolled, true);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("scroll", scrolled, true);
+    };
+  }, []);
 
   return (
     <div

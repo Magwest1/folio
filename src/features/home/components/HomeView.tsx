@@ -1,14 +1,20 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ActionItem } from "../../../domain/types.ts";
+import { useBoardDrag } from "../hooks/useBoardDrag.ts";
+import { useBoardLayout } from "../hooks/useBoardLayout.ts";
 import { useHomeActions } from "../hooks/useHomeActions.ts";
 import { useHomeCapture } from "../hooks/useHomeCapture.ts";
 import type { HomeMutation } from "../model/action-mutations.ts";
-import { isHomeEmpty } from "../model/home-sections.ts";
+import { successorId } from "../model/board-focus.ts";
+import { homeGreeting } from "../model/home-greeting.ts";
 import { snoozePresets } from "../model/snooze-presets.ts";
+import { boardGroups } from "../model/week-board.ts";
+import type { BoardEnv } from "./BoardCard.tsx";
+import { HomeBoard } from "./HomeBoard.tsx";
 import { HomeCapture } from "./HomeCapture.tsx";
-import { HomeConfirmList } from "./HomeConfirmList.tsx";
-import { HomeSectionList, HomeCardItem, type HomeCardEnv } from "./HomeSectionList.tsx";
+import { HomeHeader } from "./HomeHeader.tsx";
 import { HomeToasts } from "./HomeToasts.tsx";
+import { LetGoZone } from "./LetGoZone.tsx";
 
 export type HomeViewProps = {
   bundleId: string;
@@ -26,7 +32,14 @@ export type HomeViewProps = {
   timeZone?: string;
 };
 
-/** Where the app starts: write first, then see what needs you. */
+type PendingFocus = { id: string; fallback: string | null };
+
+function cardElement(root: HTMLElement | null, id: string | null): HTMLElement | null {
+  if (!root || !id) return null;
+  return [...root.querySelectorAll<HTMLElement>("[data-board-card]")].find((card) => card.dataset.actionId === id) ?? null;
+}
+
+/** Where the app starts: write first, then see the week. */
 export function HomeView({
   bundleId,
   groupId,
@@ -41,48 +54,87 @@ export function HomeView({
   timeZone,
 }: HomeViewProps) {
   const capture = useHomeCapture(bundleId);
-  const { sections, loaded, unavailable, toasts, run, refreshSoon, dismissToast, clock, timeZone: zone } = useHomeActions({
-    bundleId,
-    pollMs,
-    now,
-    timeZone,
-  });
+  const { actions, board, loaded, unavailable, toasts, run, refreshSoon, dismissToast, clock, timeZone: zone } =
+    useHomeActions({ bundleId, pollMs, now, timeZone });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [snoozeId, setSnoozeId] = useState<string | null>(null);
+  const [cursorId, setCursorId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const regionRef = useRef<HTMLElement | null>(null);
+  const pendingFocusRef = useRef<PendingFocus | null>(null);
+  const layout = useBoardLayout(rootRef);
 
-  /** After a card leaves the screen, keep the keyboard where the user was working. */
-  const restoreFocus = useCallback(() => {
+  const cardIds = useMemo(
+    () => boardGroups(board).flatMap((group) => group.entries.map((entry) => entry.action.id)),
+    [board],
+  );
+  const tabbableId = cursorId && cardIds.includes(cursorId) ? cursorId : (cardIds[0] ?? null);
+
+  /**
+   * After a card leaves the screen or a form closes, keep the keyboard where the
+   * user was working. It only applies if focus was lost, never over something the user chose.
+   */
+  const keepFocus = useCallback((id: string, fallback: string | null) => {
+    pendingFocusRef.current = { id, fallback };
     window.requestAnimationFrame(() => {
-      const active = document.activeElement;
-      if (active && active !== document.body) return;
-      const region = regionRef.current?.isConnected ? regionRef.current : rootRef.current;
-      region?.focus({ preventScroll: true });
+      pendingFocusRef.current = null;
     });
   }, []);
 
-  const env: HomeCardEnv = useMemo(
+  useLayoutEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (!pending) return;
+    pendingFocusRef.current = null;
+    const current = document.activeElement;
+    if (current && current !== document.body && current.isConnected) return;
+    const root = rootRef.current;
+    const target =
+      cardElement(root, pending.id) ??
+      cardElement(root, pending.fallback) ??
+      root?.querySelector<HTMLElement>("[data-home-board]") ??
+      null;
+    target?.focus({ preventScroll: true });
+  });
+
+  const moveFocus = useCallback((id: string) => {
+    cardElement(rootRef.current, id)?.focus();
+  }, []);
+
+  const findAction = useCallback((id: string) => actions.find((item) => item.id === id), [actions]);
+
+  const mutate = useCallback(
+    (action: ActionItem, mutation: HomeMutation) => {
+      keepFocus(action.id, successorId(board, action.id));
+      void run(action.id, mutation);
+    },
+    [board, keepFocus, run],
+  );
+
+  const drag = useBoardDrag({
+    today: board.today,
+    findAction,
+    onMove: (action, move) => mutate(action, move.mutation),
+  });
+
+  const env: BoardEnv = useMemo(
     () => ({
       titleForNote,
       presets: snoozePresets(clock, zone),
       editingId,
       snoozeId,
+      tabbableId,
+      drag,
       setEditingId: (id) => {
+        if (!id && editingId) keepFocus(editingId, null);
         setEditingId(id);
-        if (!id) restoreFocus();
       },
       setSnoozeId: (id) => {
+        if (!id && snoozeId) keepFocus(snoozeId, null);
         setSnoozeId(id);
-        if (!id) restoreFocus();
       },
-      onMutate: (action: ActionItem, mutation: HomeMutation) => {
-        void run(action.id, mutation);
-        restoreFocus();
-      },
+      onMutate: mutate,
       onOpenSource,
     }),
-    [clock, editingId, onOpenSource, restoreFocus, run, snoozeId, titleForNote, zone],
+    [clock, drag, editingId, keepFocus, mutate, onOpenSource, snoozeId, tabbableId, titleForNote, zone],
   );
 
   function handOff(send: (groupId: string, text: string) => void) {
@@ -92,22 +144,24 @@ export function HomeView({
     send(groupId, text);
   }
 
-  const empty = loaded && isHomeEmpty(sections);
-  const fadedCount = sections.faded.length;
+  const greeting = loaded ? homeGreeting(board, clock, zone) : null;
 
   return (
     <div
       ref={rootRef}
       className="home-view"
       data-home-view=""
+      data-layout={layout}
       tabIndex={-1}
       aria-label="Home"
       onFocusCapture={(event) => {
-        regionRef.current = (event.target as HTMLElement).closest<HTMLElement>("[data-home-region]");
+        const card = (event.target as HTMLElement).closest<HTMLElement>("[data-board-card]");
+        if (card?.dataset.actionId) setCursorId(card.dataset.actionId);
       }}
       onFocus={refreshSoon}
     >
       <div className="home-inner">
+        <HomeHeader greeting={greeting} />
         <HomeCapture
           text={capture.text}
           active={active}
@@ -116,56 +170,14 @@ export function HomeView({
           onFile={() => handOff(onFileCapture)}
           onOpenAsDraft={() => handOff(onOpenAsDraft)}
         />
-
-        {empty && (
-          <p className="home-empty" role="note">
-            Nothing needs you right now.
-          </p>
-        )}
         {!loaded && unavailable && (
           <p className="home-empty">Your actions will show up here as soon as they're ready.</p>
         )}
-
-        <HomeSectionList id="now" title="Now" entries={sections.now} env={env} />
-        {sections.comingUp.length > 0 && (
-          <section className="home-section" aria-labelledby="home-coming-up" data-home-region="" tabIndex={-1}>
-            <h2 id="home-coming-up" className="home-section-title">
-              Coming up
-            </h2>
-            {sections.comingUp.map((week) => (
-              <div key={week.key} className="home-week">
-                <h3 className="home-week-title">{week.label}</h3>
-                {week.days.map((day) => (
-                  <div key={day.key} className="home-day">
-                    <h4 className="home-day-title">{day.label}</h4>
-                    <ul className="home-card-list">
-                      {day.entries.map((entry) => (
-                        <HomeCardItem key={entry.action.id} entry={entry} env={env} mode="active" />
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </section>
-        )}
-        <HomeSectionList id="waiting" title="Waiting on others" entries={sections.waiting} env={env} />
-        <HomeSectionList id="loose-ends" title="Loose ends" entries={sections.looseEnds} env={env} />
-        <HomeConfirmList entries={sections.toConfirm} env={env} />
-
-        {fadedCount > 0 && (
-          <details className="home-faded">
-            <summary>Faded ({fadedCount})</summary>
-            <ul className="home-card-list">
-              {sections.faded.map((entry) => (
-                <HomeCardItem key={entry.action.id} entry={entry} env={env} mode="faded" />
-              ))}
-            </ul>
-          </details>
-        )}
+        <HomeBoard board={board} env={env} layout={layout} moveFocus={moveFocus} />
         {/* A short summary written by the local model can fill this slot later. */}
         <div data-home-summary-slot="" hidden />
       </div>
+      <LetGoZone drag={drag} />
       <HomeToasts toasts={toasts} onDismiss={dismissToast} />
     </div>
   );

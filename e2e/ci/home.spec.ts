@@ -68,6 +68,8 @@ test("Not important removes an action permanently", async ({ page, request }) =>
   await page.goto("/");
   const card = page.getByRole("listitem").filter({ hasText: text });
   await expect(card).toBeVisible();
+  // The card's actions appear on hover or focus.
+  await card.hover();
   await card.getByRole("button", { name: "Not important" }).click();
   await expect(card).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText("won't come back");
@@ -78,4 +80,42 @@ test("Not important removes an action permanently", async ({ page, request }) =>
   await expect(page.getByText(text)).toHaveCount(0);
   const open = await (await request.get("/api/actions")).json() as { id: string }[];
   expect(open.map((action) => action.id)).not.toContain(id);
+});
+
+test("a card moves to another day by drag and by keyboard", async ({ page, request }) => {
+  const token = Date.now().toString(36);
+  const dragText = `Home e2e drag me ${token}`;
+  const keyText = `Home e2e key me ${token}`;
+  const today = new Date();
+  const dateOf = (offset: number) => {
+    const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+    return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+  };
+  const created = await Promise.all([dragText, keyText].map((text) =>
+    request.post("/api/actions", { data: { text, due: { date: dateOf(1), time: "10:00" } } })));
+  const [dragged, keyed] = await Promise.all(created.map(async (response) => {
+    expect(response.status()).toBe(201);
+    return (await response.json() as { id: string }).id;
+  }));
+  const dueOf = async (id: string) => (await (await request.get(`/api/actions/${id}`)).json() as { due: unknown }).due;
+
+  try {
+    await page.goto("/");
+    const card = page.getByRole("listitem").filter({ hasText: dragText });
+    await expect(card).toBeVisible();
+    const target = page.locator(`[data-date="${dateOf(3)}"]`);
+    await card.dragTo(target);
+    await expect(target.getByText(dragText)).toBeVisible();
+    await expect.poll(() => dueOf(dragged)).toEqual({ date: dateOf(3), time: "10:00" });
+
+    // Keyboard: focus the card, Shift+Right moves it a day and the move is announced.
+    const keyCard = page.getByRole("listitem").filter({ hasText: keyText });
+    await keyCard.focus();
+    await page.keyboard.press("Shift+ArrowRight");
+    await expect(page.getByRole("status")).toContainText("Moved to");
+    await expect(page.locator(`[data-date="${dateOf(2)}"]`).getByText(keyText)).toBeVisible();
+    await expect.poll(() => dueOf(keyed)).toEqual({ date: dateOf(2), time: "10:00" });
+  } finally {
+    await Promise.all([dragged, keyed].map((id) => request.post(`/api/actions/${id}/let-go`)));
+  }
 });

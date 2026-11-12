@@ -11,3 +11,13 @@ export function homeMayTakeFocus(active: Element | null, home: Element | null): 
 export function modifierLabel(): string {
   return typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform) ? "⌘" : "Ctrl+";
 }
+
+/** Typing surfaces and open menus keep their keys; board shortcuts never fire there. */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable ||
+      ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) ||
+      target.closest("[role=menu], form") !== null)
+  );
+}
