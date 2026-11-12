@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ActionAnchor, ActionItem, ReminderItem } from "../../../domain/types.ts";
 import { useBoardDrag } from "../hooks/useBoardDrag.ts";
-import { useBoardLayout } from "../hooks/useBoardLayout.ts";
 import { useHomeActions } from "../hooks/useHomeActions.ts";
 import { useHomeCapture } from "../hooks/useHomeCapture.ts";
 import { useReminderFeed } from "../hooks/useReminderFeed.ts";
+import { useTimelineFit } from "../hooks/useTimelineFit.ts";
 import type { HomeMutation } from "../model/action-mutations.ts";
 import { successorId } from "../model/board-focus.ts";
 import { homeGreeting } from "../model/home-greeting.ts";
@@ -12,9 +12,9 @@ import { reminderToast } from "../model/reminder-toast.ts";
 import { snoozePresets } from "../model/snooze-presets.ts";
 import { boardGroups, type WeekBoard } from "../model/week-board.ts";
 import type { BoardEnv } from "./BoardCard.tsx";
-import { HomeBoard } from "./HomeBoard.tsx";
 import { HomeCapture } from "./HomeCapture.tsx";
 import { HomeHeader } from "./HomeHeader.tsx";
+import { HomeTimeline } from "./HomeTimeline.tsx";
 import { HomeToasts } from "./HomeToasts.tsx";
 import { LetGoZone } from "./LetGoZone.tsx";
 
@@ -43,7 +43,7 @@ function cardElement(root: HTMLElement | null, id: string | null): HTMLElement |
   return [...root.querySelectorAll<HTMLElement>("[data-board-card]")].find((card) => card.dataset.actionId === id) ?? null;
 }
 
-/** Where the app starts: write first, then see the week. */
+/** Where the app starts: write first, then scroll through what is coming. */
 export function HomeView({
   bundleId,
   groupId,
@@ -60,11 +60,11 @@ export function HomeView({
 }: HomeViewProps) {
   const capture = useHomeCapture(bundleId);
   const rootRef = useRef<HTMLDivElement>(null);
-  const { layout, budget } = useBoardLayout(rootRef);
+  const fit = useTimelineFit(rootRef);
   const {
     actions, board: liveBoard, loaded, unavailable, toasts, run, refresh, refreshSoon, dismissToast, showToast,
     snoozeWithPhrase, clearNote, clock, timeZone: zone,
-  } = useHomeActions({ bundleId, pollMs, now, timeZone, columns: budget });
+  } = useHomeActions({ bundleId, pollMs, now, timeZone });
   const actionsRef = useRef(actions);
   useEffect(() => {
     actionsRef.current = actions;
@@ -218,7 +218,7 @@ export function HomeView({
       ref={rootRef}
       className="home-view"
       data-home-view=""
-      data-layout={layout}
+      data-fit={fit}
       tabIndex={-1}
       aria-label="Home"
       onFocusCapture={(event) => {
@@ -227,20 +227,24 @@ export function HomeView({
       }}
       onFocus={refreshSoon}
     >
-      <div className="home-inner">
-        <HomeHeader greeting={greeting} />
-        <HomeCapture
-          text={capture.text}
-          active={active}
-          focusRequest={focusRequest}
-          onChange={capture.change}
-          onFile={() => handOff(onFileCapture)}
-          onOpenAsDraft={() => handOff(onOpenAsDraft)}
-        />
-        {!loaded && unavailable && (
-          <p className="home-empty">Your actions will show up here as soon as they're ready.</p>
-        )}
-        <HomeBoard board={board} env={env} layout={layout} moveFocus={moveFocus} />
+      <div className="home-scroll">
+        <div className="home-top">
+          <div className="home-column home-top-column">
+            <HomeHeader greeting={greeting} />
+            <HomeCapture
+              text={capture.text}
+              active={active}
+              focusRequest={focusRequest}
+              onChange={capture.change}
+              onFile={() => handOff(onFileCapture)}
+              onOpenAsDraft={() => handOff(onOpenAsDraft)}
+            />
+            {!loaded && unavailable && (
+              <p className="home-empty">Your actions will show up here as soon as they're ready.</p>
+            )}
+          </div>
+        </div>
+        <HomeTimeline board={board} env={env} fit={fit} focusRequest={focusRequest} moveFocus={moveFocus} />
         {/* A short summary written by the local model can fill this slot later. */}
         <div data-home-summary-slot="" hidden />
       </div>

@@ -57,9 +57,10 @@ export function currentDate(action: ActionItem): string | null {
 }
 
 /**
- * Shift+Left and Shift+Right move a card to the neighbouring column, by the same rules as
- * a drop; Shift+Down sends it to the loose ends. Nothing moves before Today, and cards
- * without a column, or from an earlier day, start at Today.
+ * Shift+Up and Shift+Down move a card to the previous or next bucket of the timeline, by the
+ * same rules as a drop; Shift+Down past the last bucket, and Shift+End, send it to "no date".
+ * Nothing moves before Today. Cards without a bucket step in from the end of the dated part,
+ * and cards from an earlier day start at Today.
  */
 export function moveForKey(
   entry: BoardEntry,
@@ -70,12 +71,17 @@ export function moveForKey(
   const today = board.today;
   if (key === "loose") return moveForDrop(action, { type: "loose" }, today);
   const index = board.columns.findIndex((column) => column.id === entry.column);
-  const fresh = index === -1 || entry.placement === "earlier";
+  const undated = index === -1;
   if (key === "later") {
-    if (fresh) return moveForDrop(action, { type: "day", date: today }, today);
+    if (entry.placement === "earlier") return moveForDrop(action, { type: "day", date: today }, today);
+    if (undated) return null;
     const next = board.columns[index + 1];
-    return next ? moveForDrop(action, targetForColumn(next), today) : null;
+    return moveForDrop(action, next ? targetForColumn(next) : { type: "loose" }, today);
   }
-  const previous = fresh ? undefined : board.columns[index - 1];
+  if (undated) {
+    const last = board.columns[board.columns.length - 1];
+    return last ? moveForDrop(action, targetForColumn(last), today) : null;
+  }
+  const previous = entry.placement === "earlier" ? undefined : board.columns[index - 1];
   return previous ? moveForDrop(action, targetForColumn(previous), today) : null;
 }

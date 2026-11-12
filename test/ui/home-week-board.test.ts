@@ -7,10 +7,10 @@ import { toastLabel } from "../../src/features/home/model/action-mutations.ts";
 import { addDays, daysBetween, weekdayIndex } from "../../src/features/home/model/home-time.ts";
 import {
   buildTimeColumns,
-  columnBudget,
   dayAnnouncement,
   HORIZON_CAP_DAYS,
   HORIZON_TARGET,
+  TIMELINE_BUDGET,
   type ColumnSpec,
 } from "../../src/features/home/model/time-buckets.ts";
 import {
@@ -340,11 +340,9 @@ describe("adaptive time columns", () => {
     expect(first[0]).toBe("today:2026-10-31");
   });
 
-  it("respects the column budget at every width tier", () => {
+  it("respects a column budget when one is given, keeping Today first and Later last", () => {
     const dates = ["2026-11-12", "2026-11-14", "2026-11-19", "2026-11-26", "2026-12-04", "2026-12-24", "2027-02-02"];
-    const tiers = [[1400, 8], [1200, 8], [1100, 7], [1000, 6], [850, 5], [700, 4], [500, 8]] as const;
-    for (const [width, budget] of tiers) {
-      expect(columnBudget(width)).toBe(budget);
+    for (const budget of [4, 5, 6, 7, 8]) {
       const columns = cols(dates, budget);
       expect(columns.length).toBeLessThanOrEqual(budget);
       expect(columns[0].kind).toBe("today");
@@ -354,24 +352,32 @@ describe("adaptive time columns", () => {
     for (const budget of [4, 5, 6, 7, 8]) expect(cols(dense, budget).length).toBeLessThanOrEqual(budget);
   });
 
-  it("puts a window in the bucket that contains it, and falls back to a band", () => {
+  it("gives the vertical timeline every bucket it needs, merging only empty stretches", () => {
+    const dates = ["2026-11-12", "2026-11-14", "2026-11-19", "2026-11-26", "2026-12-04", "2026-12-24", "2027-02-02"];
+    const columns = buildTimeColumns({ today: "2026-11-12", dates, budget: TIMELINE_BUDGET });
+    for (const date of dates) {
+      const home = columns.find((candidate) => date >= candidate.start && date <= (candidate.end ?? "9999-12-31"));
+      expect(home?.kind).not.toBe("later");
+    }
+    expect(columns.length).toBeGreaterThan(8);
+  });
+
+  it("puts a window under the bucket that contains it, or where it starts, with no band", () => {
     const nextWeek = action({ id: "inside", due: { window: { start: "2026-11-16", end: "2026-11-22" } } });
     const thisWeek = action({ id: "crossing", due: { window: { start: "2026-11-09", end: "2026-11-15" } } });
     const far = action({ id: "far", due: { window: { start: "2027-03-01", end: "2027-03-05" } } });
     const board = build([...busy(), nextWeek, thisWeek, far]);
-    // In a busy week the days stay single, so no bucket holds a whole window: bands.
-    expect(board.bands.map((band) => [band.label, ids(band.entries)])).toEqual([
-      ["sometime this week", ["crossing"]],
-      ["sometime next week", ["inside"]],
-    ]);
+    // In a busy week the days stay single, so no bucket holds a whole window: it sits where it starts.
+    expect(real(column(board, "2026-11-16").entries)).toEqual(["inside"]);
+    expect(real(board.columns[0].entries)).toContain("crossing");
     expect(ids(board.columns.at(-1)?.entries ?? [])).toEqual(["far"]);
+    expect("bands" in board).toBe(false);
 
-    // On a sparse board a week column contains the window, and the band disappears.
+    // On a sparse board a week column contains the window.
     const sparse = buildWeekBoard([nextWeek, action({ id: "later one", due: { date: "2026-12-10" } })], NOW, "UTC", 6);
     const home = sparse.columns.find((candidate) => candidate.entries.some((entry) => entry.action.id === "inside"));
     expect(home).toBeDefined();
     expect(home?.start <= "2026-11-16" && "2026-11-22" <= (home?.end ?? "")).toBe(true);
-    expect(sparse.bands).toHaveLength(0);
   });
 
   it("sorts cards by date inside a wide column and shows their date, not in single days", () => {
@@ -535,7 +541,7 @@ describe("keyboard moves", () => {
   const dense = busy();
   const boardWith = (...extra: ActionItem[]) => build([...extra, ...dense]);
   const entryOf = (board: WeekBoard, id: string) =>
-    [...board.columns.flatMap((candidate) => [...candidate.entries, ...candidate.earlier.flatMap((group) => group.entries)]), ...board.looseEnds, ...board.bands.flatMap((band) => band.entries)].find(
+    [...board.columns.flatMap((candidate) => [...candidate.entries, ...candidate.earlier.flatMap((group) => group.entries)]), ...board.looseEnds, ...board.waiting].find(
       (entry) => entry.action.id === id,
     ) as BoardEntry;
 
@@ -575,7 +581,7 @@ describe("keyboard moves", () => {
     });
   });
 
-  it("steps from the last column into Later with the first day after the horizon", () => {
+  it("steps from the last day into Later, and from Later past the dated part to no date", () => {
     const wednesday = action({ id: "wed", due: { date: "2026-11-18" } });
     const board = boardWith(wednesday);
     expect(moveForKey(entryOf(board, "wed"), "later", board)?.mutation).toMatchObject({
@@ -584,22 +590,28 @@ describe("keyboard moves", () => {
     });
     const later = action({ id: "later", due: { date: "2026-12-24" } });
     const withLater = boardWith(later);
-    expect(moveForKey(entryOf(withLater, "later"), "later", withLater)).toBeNull();
+    expect(moveForKey(entryOf(withLater, "later"), "later", withLater)?.mutation).toEqual({
+      type: "edit",
+      patch: { due: null },
+      label: "Moved to loose ends.",
+    });
     expect(moveForKey(entryOf(withLater, "later"), "earlier", withLater)?.mutation).toMatchObject({
       patch: { due: { date: "2026-11-18" } },
     });
   });
 
-  it("starts a loose end or an earlier item at today", () => {
+  it("starts an earlier item at today, and brings an undated one in from the end of the list", () => {
     const loose = action({ id: "loose" });
     const old = action({ id: "old", due: { date: "2026-11-09" } });
     const board = boardWith(loose, old);
-    expect(moveForKey(entryOf(board, "loose"), "later", board)?.mutation).toMatchObject({ patch: { due: { date: "2026-11-12" } } });
     expect(moveForKey(entryOf(board, "old"), "later", board)?.mutation).toMatchObject({ patch: { due: { date: "2026-11-12" } } });
-    expect(moveForKey(entryOf(board, "loose"), "earlier", board)).toBeNull();
+    expect(moveForKey(entryOf(board, "old"), "earlier", board)).toBeNull();
+    // Up from "no date" lands in the last bucket; down has nowhere further to go.
+    expect(moveForKey(entryOf(board, "loose"), "earlier", board)?.mutation).toMatchObject({ patch: { due: { date: "2026-11-19" } } });
+    expect(moveForKey(entryOf(board, "loose"), "later", board)).toBeNull();
   });
 
-  it("sends a card to the loose ends with Shift+Down", () => {
+  it("sends a card to no date with Shift+End", () => {
     const friday = action({ id: "friday", due: { date: "2026-11-13" } });
     const board = boardWith(friday, action({ id: "plain" }));
     expect(moveForKey(entryOf(board, "friday"), "loose", board)?.mutation).toMatchObject({
@@ -626,12 +638,6 @@ describe("keyboard focus across the board", () => {
     expect(neighbourId(board, "d", "next")).toBe("d");
     expect(neighbourId(board, "c", "previous")).toBe("b");
     expect(neighbourId(board, "a", "previous")).toBe("a");
-  });
-
-  it("jumps between columns with left and right, on the same row", () => {
-    expect(neighbourId(board, "b", "right")).toBe("c");
-    expect(neighbourId(board, "c", "left")).toBe("a");
-    expect(neighbourId(board, "a", "left")).toBe("a");
   });
 
   it("finds where focus should land when a card leaves", () => {

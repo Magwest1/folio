@@ -16,9 +16,8 @@ export const HORIZON_CAP_DAYS = 183;
 export const DAY_COLUMNS = 7;
 /** Weeks stand alone for about four weeks; after that the ladder counts in months. */
 const WEEK_ZONE_DAYS = 27;
-/** Fewest and most columns, Today and Later included. */
-export const MIN_BUDGET = 4;
-export const MAX_BUDGET = 8;
+/** A vertical list has room for every bucket, so only empty stretches are merged. */
+export const TIMELINE_BUDGET = 64;
 
 export type ColumnKind = "today" | "day" | "range" | "week" | "month" | "later";
 
@@ -52,16 +51,6 @@ export type TimeColumnsInput = {
   target?: number;
   capDays?: number;
 };
-
-/** How many columns fit in a pane of this width. Narrower panes use fewer, wider columns. */
-export function columnBudget(width: number): number {
-  if (width <= 0 || width < 640) return MAX_BUDGET;
-  if (width >= 1200) return 8;
-  if (width >= 1060) return 7;
-  if (width >= 930) return 6;
-  if (width >= 790) return 5;
-  return MIN_BUDGET;
-}
 
 const MONTH_NAMES = [
   "january", "february", "march", "april", "may", "june",
