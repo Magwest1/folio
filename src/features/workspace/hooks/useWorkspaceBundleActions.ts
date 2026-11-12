@@ -1,3 +1,4 @@
+import { isHomeTabId } from "../../home/model/home-tab.ts";
 import type { Dispatch, SetStateAction, RefObject } from "react";
 import type {
   BundleFile,
@@ -85,7 +86,7 @@ export function useWorkspaceBundleActions(
       ]);
       const openIds = Array.from(
         new Set(groups.flatMap((group) => group.tabs)),
-      ).filter((id) => !isUntitledId(id));
+      ).filter((id) => !isUntitledId(id) && !isHomeTabId(id));
       const refreshedDocuments = await Promise.allSettled(
         openIds.map(async (id) => ({
           oldId: id,

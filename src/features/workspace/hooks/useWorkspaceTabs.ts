@@ -7,6 +7,7 @@ import type {
   ViewerDocument,
 } from "../../../domain/types.ts";
 import { isUntitledId } from "../../../lib/workspace.ts";
+import { isHomeTabId, preferUnfinishedDraft } from "../../home/model/home-tab.ts";
 import {
   activateGroupTab,
   closeGroupTab,
@@ -39,15 +40,22 @@ export function useWorkspaceTabs({
   draftTitle,
   initialState,
 }: UseWorkspaceTabsOptions) {
-  const [groups, setGroups] = useState<TabGroup[]>(
-    () => initialState?.groups ?? [{ id: "primary", tabs: [], activeId: null, previewId: null }],
+  // A restored session wins, except that it never lands on Home over an unfinished draft.
+  // With nothing to restore the group is empty, and an empty group shows Home.
+  const [initialTabs] = useState(() =>
+    preferUnfinishedDraft(
+      initialState
+        ? { groups: initialState.groups, activeGroupId: initialState.activeGroupId }
+        : { groups: [{ id: "primary", tabs: [], activeId: null, previewId: null }], activeGroupId: "primary" },
+      (id) => drafts[id] ?? documents[id]?.content,
+    ),
   );
-  const [activeGroupId, setActiveGroupId] = useState(
-    initialState?.activeGroupId ?? "primary",
-  );
+  const [groups, setGroups] = useState<TabGroup[]>(initialTabs.groups);
+  const [activeGroupId, setActiveGroupId] = useState(initialTabs.activeGroupId);
   const untitledCounter = useRef(0);
 
   function titleForId(id: string) {
+    if (isHomeTabId(id)) return "Home";
     if (isUntitledId(id))
       return draftTitle(drafts[id] ?? documents[id]?.content ?? "");
     return (

@@ -29,6 +29,7 @@ type Options = {
     format: NoteExportFormat,
   ) => void;
   openSettings: () => void;
+  openHome?: () => void;
 };
 
 export function useWorkspaceShortcutActions(options: Options) {
@@ -53,6 +54,7 @@ export function useWorkspaceShortcutActions(options: Options) {
 
   function runShortcut(action: WorkspaceShortcutAction) {
     if (action === "open-settings") return options.openSettings();
+    if (action === "open-home") return options.openHome?.();
     if (action === "new-note") return options.createNewTab();
     if (action === "find-in-note") {
       const editor = document.querySelector<HTMLElement>(

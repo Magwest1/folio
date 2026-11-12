@@ -6,6 +6,9 @@ import { EditorTabs } from "../../tabs/EditorTabs.tsx";
 import { DocumentPane } from "./DocumentPane.tsx";
 import { DocumentView } from "./DocumentView.tsx";
 import { HistoryDocumentView } from "./HistoryDocumentView.tsx";
+import { HomeView } from "../../home/components/HomeView.tsx";
+import type { HomeWorkspaceBindings } from "../../home/model/home-bindings.ts";
+import { HOME_TAB_ID, isHomeTabId } from "../../home/model/home-tab.ts";
 import type {
   EditorWorkspaceActions,
   EditorWorkspaceModel,
@@ -29,6 +32,9 @@ type EditorGroupProps = {
     | "historyRestored"
   >;
   ui: WorkspaceEditorUi;
+  home?: HomeWorkspaceBindings;
+  /** Another group already shows Home, so an empty group keeps its quiet placeholder. */
+  homeShownElsewhere?: boolean;
   historyPreview?: EditorWorkspaceProps["historyPreview"];
   paneControls?: {
     leftOpen: boolean;
@@ -45,6 +51,8 @@ export function EditorGroup({
   model,
   actions,
   ui,
+  home,
+  homeShownElsewhere = false,
   historyPreview,
   paneControls,
 }: EditorGroupProps) {
@@ -59,6 +67,15 @@ export function EditorGroup({
     model.editorFocusRequest.documentId === document?.id
       ? model.editorFocusRequest
       : null;
+
+  // A Home tab, or a group with no tabs at all, shows Home instead of a blank pane.
+  const showsHome = Boolean(
+    home && (isHomeTabId(group.activeId) || (!group.activeId && !homeShownElsewhere)),
+  );
+  const homeFocusRequest =
+    model.editorFocusRequest?.groupId === group.id && model.editorFocusRequest.documentId === HOME_TAB_ID
+      ? model.editorFocusRequest.id
+      : 0;
 
   useEffect(() => {
     if (focusRequest && document && !document.deletable)
@@ -184,10 +201,25 @@ export function EditorGroup({
         }}
         onCloseTab={actions.closeTab}
         onNewTab={actions.createNewTab}
+        onOpenHome={home ? actions.openHome : undefined}
         onSplit={actions.splitWorkspace}
         onCloseGroup={actions.closeGroup}
       />
 
+      {showsHome && home ? (
+        <div className="editor-surface">
+          <HomeView
+            bundleId={home.bundleId}
+            groupId={group.id}
+            active={model.activeGroupId === group.id}
+            focusRequest={homeFocusRequest}
+            titleForNote={home.titleForNote}
+            onFileCapture={home.fileCapture}
+            onOpenAsDraft={home.openCaptureAsDraft}
+            onOpenSource={home.openSource}
+          />
+        </div>
+      ) : (
       <DocumentPane
         groupId={group.id}
         hasDocument={Boolean(document)}
@@ -278,6 +310,7 @@ export function EditorGroup({
           {historyPreview && <HistoryDocumentView document={document} snapshot={historyPreview.snapshot} loading={historyPreview.loading} failed={historyPreview.failed} presentContent={historyPreview.presentContent} />}
         </>}
       </DocumentPane>
+      )}
     </section>
   );
 }

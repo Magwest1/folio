@@ -1,5 +1,6 @@
 import type { SidebarMode, TabGroup } from "../../../domain/types.ts";
 import { readStorageItem, writeStorageItem } from "../../../lib/storage.ts";
+import { isHomeTabId } from "../../home/model/home-tab.ts";
 
 export const WORKSPACE_STATE_STORAGE_KEY = "folio:workspace-state";
 export const WORKSPACE_STATE_VERSION = 1;
@@ -146,7 +147,7 @@ export function reconcileWorkspaceSessionState(
   validIds: ReadonlySet<string>,
 ): Pick<WorkspaceSessionState, "groups" | "activeGroupId"> {
   const groups = state.groups.map((group) => {
-    const tabs = group.tabs.filter((id) => validIds.has(id));
+    const tabs = group.tabs.filter((id) => isHomeTabId(id) || validIds.has(id));
     return {
       ...group,
       tabs,

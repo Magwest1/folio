@@ -1,0 +1,402 @@
+/* Home: write first, then see what needs you. Calm by design: no alarm colors. */
+
+.home-view {
+  height: 100%;
+  min-width: 0;
+  overflow-y: auto;
+  container-type: inline-size;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.home-view:focus {
+  outline: none;
+}
+
+.home-inner {
+  width: min(720px, 100%);
+  margin: 0 auto;
+  padding: clamp(18px, 6cqi, 48px) clamp(14px, 5cqi, 32px) 72px;
+  display: grid;
+  gap: 26px;
+}
+
+.home-view button {
+  font-family: inherit;
+}
+
+.home-capture {
+  display: grid;
+  gap: 8px;
+}
+
+.home-capture-label {
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.home-capture-field {
+  width: 100%;
+  min-height: 84px;
+  max-height: 360px;
+  padding: 14px 15px;
+  resize: none;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  color: var(--ink);
+  background: var(--surface-editor);
+  font: 400 clamp(15px, 3.4cqi, 18px) / 1.6 'Iowan Old Style', Baskerville, Georgia, serif;
+  overflow-y: auto;
+}
+
+.home-capture-field::placeholder {
+  color: var(--dim);
+}
+
+.home-capture-field:focus-visible {
+  outline: none;
+  border-color: var(--acid);
+  box-shadow: 0 0 0 1px var(--acid);
+}
+
+.home-capture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.home-capture-hint {
+  flex: 1 1 220px;
+  margin: 0;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.home-primary-button,
+.home-quiet-button {
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.home-primary-button {
+  border-color: var(--acid);
+  color: var(--button-ink);
+  background: var(--acid);
+}
+
+.home-quiet-button {
+  color: var(--muted);
+  background: transparent;
+}
+
+.home-primary-button:hover:not(:disabled),
+.home-primary-button:focus-visible {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.home-quiet-button:hover:not(:disabled),
+.home-quiet-button:focus-visible {
+  color: var(--acid);
+  border-color: var(--acid);
+}
+
+.home-primary-button:disabled,
+.home-quiet-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.home-link-button {
+  padding: 0;
+  border: 0;
+  color: var(--acid);
+  background: none;
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.home-empty {
+  margin: 0;
+  color: var(--muted);
+  font: 400 clamp(18px, 4cqi, 24px) / 1.3 'Iowan Old Style', Baskerville, Georgia, serif;
+  letter-spacing: -0.02em;
+}
+
+.home-section {
+  display: grid;
+  gap: 10px;
+}
+
+.home-section:focus {
+  outline: none;
+}
+
+.home-section-title {
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.home-week-title,
+.home-day-title {
+  margin: 8px 0 4px;
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.home-day-title {
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: 12px;
+}
+
+.home-card-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+
+.home-card {
+  min-width: 0;
+  padding: 11px 13px;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--paper-raised);
+}
+
+.home-card:focus {
+  outline: none;
+}
+
+.home-card.is-selected {
+  border-color: var(--acid);
+  box-shadow: inset 2px 0 0 var(--acid);
+}
+
+.home-card-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.home-card-meta,
+.home-card-added {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.home-card-meta .home-card-source {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--dim);
+}
+
+.home-card-added {
+  color: var(--dim);
+}
+
+.home-card.is-passed .home-card-meta span:first-child {
+  font-style: italic;
+}
+
+.home-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.home-snooze-wrap {
+  position: relative;
+}
+
+.home-snooze-menu {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 190px;
+  padding: 4px;
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--overlay-background);
+  box-shadow: 8px 8px 0 rgba(var(--shadow-rgb), 0.14);
+}
+
+.home-snooze-menu button {
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-snooze-menu button:hover,
+.home-snooze-menu button:focus-visible {
+  outline: none;
+  background: var(--surface-band);
+}
+
+.home-snooze-menu kbd {
+  color: var(--dim);
+  font: inherit;
+  font-size: 10px;
+}
+
+.home-confirm {
+  display: grid;
+  gap: 8px;
+  outline: none;
+}
+
+.home-confirm:focus-visible {
+  outline: 1px solid var(--acid);
+  outline-offset: 4px;
+}
+
+.home-confirm-hint {
+  margin: 0;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.home-faded {
+  color: var(--dim);
+}
+
+.home-faded summary {
+  width: fit-content;
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.home-faded[open] summary {
+  margin-bottom: 10px;
+}
+
+.home-faded .home-card {
+  background: transparent;
+}
+
+.home-edit-form {
+  display: grid;
+  gap: 6px;
+}
+
+.home-edit-form label {
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.home-edit-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  color: var(--ink);
+  background: var(--surface-editor);
+  font: inherit;
+  font-size: 13px;
+}
+
+.home-edit-form input:focus-visible {
+  outline: none;
+  border-color: var(--acid);
+}
+
+.home-edit-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.home-edit-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.home-toasts {
+  position: sticky;
+  bottom: 14px;
+  width: min(420px, calc(100% - 28px));
+  margin: 0 auto 14px 14px;
+  display: grid;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.home-toast {
+  padding: 9px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--acid);
+  color: var(--muted);
+  background: var(--message-background);
+  box-shadow: 8px 8px 0 rgba(var(--shadow-rgb), 0.14);
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+@container (max-width: 420px) {
+  .home-card-actions .home-quiet-button,
+  .home-card-actions .home-primary-button {
+    flex: 1 1 auto;
+  }
+
+  .home-capture-actions .home-quiet-button,
+  .home-capture-actions .home-primary-button {
+    flex: 1 1 auto;
+  }
+}

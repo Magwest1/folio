@@ -1,4 +1,8 @@
 import type {
+  ActionItem,
+  ActionPatch,
+  ActionStatus,
+  ActionTransition,
   NoteLanguageInfo,
   NoteTranslation,
   NoteTranslationTarget,
@@ -154,4 +158,33 @@ export function cancelTranslatedExport(jobId: string): Promise<{ jobId: string; 
 
 export function fetchNoteLanguage(id: string, signal?: AbortSignal): Promise<NoteLanguageInfo> {
   return api<NoteLanguageInfo>(`/api/note/language?id=${encodeURIComponent(id)}`, { signal });
+}
+
+export function fetchActions(
+  options: { status?: ActionStatus[]; includeClosed?: boolean } = {},
+  signal?: AbortSignal,
+): Promise<ActionItem[]> {
+  const params = new URLSearchParams();
+  if (options.status?.length) params.set("status", options.status.join(","));
+  if (options.includeClosed) params.set("includeClosed", "true");
+  const query = params.toString();
+  return api<ActionItem[]>(`/api/actions${query ? `?${query}` : ""}`, { signal });
+}
+
+export function transitionAction(
+  id: string,
+  transition: ActionTransition,
+  body: { until?: string } = {},
+): Promise<ActionItem> {
+  return api<ActionItem>(`/api/actions/${encodeURIComponent(id)}/${transition}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function patchAction(id: string, patch: ActionPatch): Promise<ActionItem> {
+  return api<ActionItem>(`/api/actions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
 }

@@ -1,4 +1,5 @@
 import type { TabGroup } from "../../domain/types.ts";
+import { isHomeTabId } from "../home/model/home-tab.ts";
 
 function PaneToggle({ side, open, onClick, updateAvailable = false }: { side: "left" | "right"; open: boolean; onClick: () => void; updateAvailable?: boolean }) {
   const action = open ? "Hide" : "Show";
@@ -42,6 +43,7 @@ export type EditorTabsProps = {
   dropIndex?: number | null;
   onCloseTab: (groupId: string, id: string) => void;
   onNewTab: (groupId: string) => void;
+  onOpenHome?: (groupId: string) => void;
   onSplit: () => void;
   onCloseGroup: (groupId: string) => void;
   onPinTab: (groupId: string, id: string) => void;
@@ -67,6 +69,7 @@ export function EditorTabs({
   dropIndex,
   onCloseTab,
   onNewTab,
+  onOpenHome,
   onSplit,
   onCloseGroup,
   onPinTab,
@@ -99,7 +102,7 @@ export function EditorTabs({
             key={id}
           >
             <span className="tab-file-mark">
-              {isUntitledId(id) ? "+" : "M"}
+              {isHomeTabId(id) ? "H" : isUntitledId(id) ? "+" : "M"}
             </span>
             <span className="tab-title">{titleForId(id)}</span>
             <span
@@ -125,6 +128,16 @@ export function EditorTabs({
         ))}
       </div>
       <div className="group-actions">
+        {onOpenHome && (
+          <button
+            type="button"
+            onClick={() => onOpenHome(group.id)}
+            title="Home (Cmd+Shift+H)"
+            aria-label="Home"
+          >
+            Home
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onNewTab(group.id)}
