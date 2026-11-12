@@ -1,6 +1,7 @@
 import 'dotenv/config'
 
 import fs from 'node:fs/promises'
+import path from 'node:path'
 import express from 'express'
 
 import { createConfig } from './config.js'
@@ -19,6 +20,7 @@ import { createReleaseService } from './updates/service.js'
 import { createObsidianImportService } from './imports/obsidian.js'
 import { createHistoryService } from './history/service.js'
 import { createTranslationService } from './translation/service.js'
+import { createActionStore } from './actions/store.js'
 import { registerRoutes as registerMlxRoutes } from './routes/mlx.js'
 import { registerRoutes as registerSystemRoutes } from './routes/system.js'
 import { registerRoutes as registerFileRoutes } from './routes/files.js'
@@ -33,6 +35,7 @@ import { registerRoutes as registerBackupRoutes } from './routes/backup.js'
 import { registerRoutes as registerBundleRoutes } from './routes/bundles.js'
 import { registerRoutes as registerHistoryRoutes } from './routes/history.js'
 import { registerRoutes as registerTranslationRoutes } from './routes/translation.js'
+import { registerRoutes as registerActionRoutes } from './routes/actions.js'
 import { registerRoutes as registerTranscriptionRoutes } from './transcription/routes.js'
 import { createBundleRuntimeManager } from './bundles/registry.js'
 
@@ -52,6 +55,7 @@ export function createRuntime(env = process.env, sharedMlxService = null) {
   Object.assign(runtime, createObsidianImportService(runtime))
   Object.assign(runtime, { history: createHistoryService(runtime) })
   runtime.translation = createTranslationService(runtime)
+  runtime.actionStore = createActionStore({ filePath: path.join(runtime.bundleRoot, '.folio', 'actions.json') })
   return runtime
 }
 
@@ -130,6 +134,7 @@ export async function createApp(runtime = createRuntime()) {
   registerAssetRoutes(app, scopedRuntime)
   registerHistoryRoutes(app, scopedRuntime)
   registerTranslationRoutes(app, scopedRuntime)
+  registerActionRoutes(app, scopedRuntime)
   registerTranscriptionRoutes(app, scopedRuntime)
   registerCaptureRoutes(app, scopedRuntime)
   registerConfirmationRoutes(app, scopedRuntime)

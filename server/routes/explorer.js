@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { reanchorNote } from '../actions/hooks.js'
 
 export function registerRoutes(app, runtime) {
   const {
@@ -159,6 +160,7 @@ export function registerRoutes(app, runtime) {
           }
           committed = true
           runtime.translation?.forget(`${id}/`)
+          runtime.actionStore?.forget(`${id}/`)
           const warnings = []
           try {
             await runtime.history.reconcile(`Deleted folder ${id}`)
@@ -310,6 +312,8 @@ export function registerRoutes(app, runtime) {
       if (moveResult.warning) void refreshMissingEmbeddingsInBackground()
       runtime.translation?.moveNote(moveResult.oldId, moveResult.newId)
       runtime.translation?.enqueue(moveResult.newId)
+      runtime.actionStore?.moveNote(moveResult.oldId, moveResult.newId)
+      reanchorNote(runtime, moveResult.newId, current.content)
       response.json({
         oldId: moveResult.oldId,
         newId: moveResult.newId,

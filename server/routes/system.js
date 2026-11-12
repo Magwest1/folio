@@ -160,6 +160,7 @@ app.delete('/api/note', async (request, response, next) => {
       warning = 'The note was deleted, but its history checkpoint could not be saved.'
     }
     runtime.translation?.forget(id)
+    runtime.actionStore?.forget(id)
     response.json({ deletedId: id, rawId: record.rawId, ...(warning ? { warning } : {}) })
   } catch (error) {
     next(error)
