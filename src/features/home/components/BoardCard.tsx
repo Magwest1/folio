@@ -20,7 +20,11 @@ export type BoardEnv = {
   setEditingId: (id: string | null) => void;
   setSnoozeId: (id: string | null) => void;
   onMutate: (action: ActionItem, mutation: HomeMutation) => void;
+  onSnoozePhrase: (action: ActionItem, phrase: string) => Promise<string | null>;
   onOpenSource: (action: ActionItem) => void;
+  onClearNote: (action: ActionItem) => void;
+  /** Items Folio has asked "still relevant?" about, by action id. Quiet text on the card, never a badge. */
+  checkins: ReadonlyMap<string, string>;
 };
 
 type BoardCardProps = {
@@ -68,6 +72,9 @@ export function BoardCard({ entry, env, variant }: BoardCardProps) {
   const live = !faded && !entry.completed;
   const draggable = live && !editing && !snoozeOpen;
   const mutate = (mutation: HomeMutation) => env.onMutate(action, mutation);
+  // Asked once; answering (which touches the item) or any later edit makes the line go away.
+  const askedAt = env.checkins.get(action.id);
+  const asked = live && askedAt !== undefined && Date.parse(action.touchedAt) <= Date.parse(askedAt);
 
   const person = [action.person, entry.waitingLabel].filter(Boolean).join(" · ");
   const meta: ReactNode[] = [
@@ -146,6 +153,7 @@ export function BoardCard({ entry, env, variant }: BoardCardProps) {
                       presets={env.presets}
                       label={`Snooze ${action.text}`}
                       onClose={() => env.setSnoozeId(null)}
+                      onPhrase={(phrase) => env.onSnoozePhrase(action, phrase)}
                       onPick={(preset) => {
                         env.setSnoozeId(null);
                         mutate({ type: "snooze", until: preset.until, label: preset.label });
@@ -156,12 +164,36 @@ export function BoardCard({ entry, env, variant }: BoardCardProps) {
               )}
               {live && <IconButton label="Edit" icon="edit" onClick={() => env.setEditingId(action.id)} />}
               {canOpenSource && <IconButton label="Open source" icon="source" onClick={() => env.onOpenSource(action)} />}
+              {canOpenSource && live && (
+                <IconButton label="Clear actions from this note" icon="clear-note" onClick={() => env.onClearNote(action)} />
+              )}
               {entry.suggested && (
                 <IconButton label="Not an action" icon="not-action" onClick={() => mutate({ type: "not-an-action" })} />
               )}
               <IconButton label="Not important" icon="dismiss" onClick={() => mutate({ type: "not-important" })} />
             </div>
           </div>
+          {asked && (
+            <p className="board-card-checkin">
+              Still relevant?{" "}
+              <button
+                type="button"
+                className="home-link-button"
+                aria-label={`Keep ${action.text}`}
+                onClick={() => mutate({ type: "keep" })}
+              >
+                Keep
+              </button>
+              <button
+                type="button"
+                className="home-link-button"
+                aria-label={`Let go of ${action.text}`}
+                onClick={() => mutate({ type: "not-important" })}
+              >
+                Let go
+              </button>
+            </p>
+          )}
           {entry.recentlyAdded && (
             <p className="board-card-added">
               added from {sourceTitle ?? "a note"} ·{" "}

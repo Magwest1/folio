@@ -213,6 +213,7 @@ export function EditorGroup({
             groupId={group.id}
             active={model.activeGroupId === group.id}
             focusRequest={homeFocusRequest}
+            focusAction={home.focusAction}
             titleForNote={home.titleForNote}
             onFileCapture={home.fileCapture}
             onOpenAsDraft={home.openCaptureAsDraft}

@@ -1,16 +1,35 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { SnoozePreset } from "../model/snooze-presets.ts";
 
 type SnoozeMenuProps = {
   presets: SnoozePreset[];
   label: string;
   onPick: (preset: SnoozePreset) => void;
+  /** Snoozes with the user's own words. Resolves to a friendly error to show, or null when it worked. */
+  onPhrase: (phrase: string) => Promise<string | null>;
   onClose: () => void;
 };
 
-/** Three plain choices. Typing a date in words comes later. */
-export function SnoozeMenu({ presets, label, onPick, onClose }: SnoozeMenuProps) {
+const NAVIGABLE = "[role=menuitem], input";
+
+/** Three plain choices, and a small field for anything else: "tomorrow after lunch", "neste uke". */
+export function SnoozeMenu({ presets, label, onPick, onPhrase, onClose }: SnoozeMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const errorId = useId();
+  const [phrase, setPhrase] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const text = phrase.trim();
+    if (!text || busy) return;
+    setBusy(true);
+    const problem = await onPhrase(text);
+    setBusy(false);
+    if (problem) setError(problem);
+    else onClose();
+  }
+
   const closeRef = useRef(onClose);
   useEffect(() => {
     closeRef.current = onClose;
@@ -54,7 +73,9 @@ export function SnoozeMenu({ presets, label, onPick, onClose }: SnoozeMenuProps)
           onClose();
           return;
         }
-        const preset = presets[Number(event.key) - 1];
+        // Digits typed into the field are words, not shortcuts.
+        const typing = event.target instanceof HTMLInputElement;
+        const preset = typing ? undefined : presets[Number(event.key) - 1];
         if (preset) {
           event.preventDefault();
           event.stopPropagation();
@@ -64,7 +85,7 @@ export function SnoozeMenu({ presets, label, onPick, onClose }: SnoozeMenuProps)
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
           event.stopPropagation();
-          const items = [...(menuRef.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])];
+          const items = [...(menuRef.current?.querySelectorAll<HTMLElement>(NAVIGABLE) ?? [])];
           const index = items.indexOf(document.activeElement as HTMLElement);
           const step = event.key === "ArrowDown" ? 1 : -1;
           items[(index + step + items.length) % items.length]?.focus();
@@ -77,6 +98,33 @@ export function SnoozeMenu({ presets, label, onPick, onClose }: SnoozeMenuProps)
           <kbd aria-hidden="true">{index + 1}</kbd>
         </button>
       ))}
+      <form
+        className="home-snooze-phrase"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <input
+          type="text"
+          value={phrase}
+          maxLength={120}
+          placeholder="tomorrow after lunch, neste uke…"
+          aria-label="Snooze until, in your own words"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
+          disabled={busy}
+          onChange={(event) => {
+            setPhrase(event.target.value);
+            setError(null);
+          }}
+        />
+        {error && (
+          <p id={errorId} className="home-snooze-error" role="alert">
+            {error}
+          </p>
+        )}
+      </form>
     </div>
   );
 }

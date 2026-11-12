@@ -1,1 +1,1 @@
-export type SettingsCategory = "bundles" | "models" | "appearance" | "backup" | "updates";
+export type SettingsCategory = "bundles" | "models" | "reminders" | "appearance" | "backup" | "updates";

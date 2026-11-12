@@ -8,6 +8,7 @@ import {
 } from "../../../lib/workspace.ts";
 import { NoteDeleteConfirmation } from "./NoteDeleteConfirmation.tsx";
 import { NoteMoreMenu } from "./NoteMoreMenu.tsx";
+import { useClearNoteActions } from "../../home/hooks/useClearNoteActions.ts";
 import type { NoteExportFormat } from "../model/note-export.ts";
 import { canTranslateExport } from "../model/note-translation.ts";
 import { useTranslationSettings } from "../hooks/useTranslationSettings.ts";
@@ -76,6 +77,7 @@ export function DocumentFooter({
   refileTranslated = false,
 }: DocumentFooterProps) {
   const translationSettings = useTranslationSettings().settings;
+  const clearNote = useClearNoteActions();
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null);
   const frontmatterLinks = Array.from(
     new Map(
@@ -213,6 +215,9 @@ export function DocumentFooter({
             exporting={exporting}
             disabled={readOnly}
             onExport={(format) => onExport(document, format)}
+            clearActions={
+              readOnly || isUntitledId(document.id) ? undefined : { onClear: () => void clearNote.clear(document.id) }
+            }
             refile={
               onRefile && !readOnly && document.deletable && document.movable
                 ? {
@@ -234,6 +239,16 @@ export function DocumentFooter({
           />
         </div>
       </div>
+      {clearNote.notice && (
+        <p className="document-footer-notice" role="status">
+          <span>{clearNote.notice.message}</span>
+          {clearNote.notice.undo && (
+            <button type="button" className="document-footer-link" onClick={clearNote.notice.undo}>
+              Undo
+            </button>
+          )}
+        </p>
+      )}
       {footerLinks.length > 0 && (
         <div className="document-footer-links">
           <span>Links {frontmatterLinks.length}</span>

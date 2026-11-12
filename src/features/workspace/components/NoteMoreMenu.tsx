@@ -16,6 +16,8 @@ type NoteMoreMenuProps = {
     /** Tooltip explaining why Refile is unavailable right now. */
     reason?: string;
   };
+  /** Present only for filed notes: lets go of every open action found in this note, as one undoable step. */
+  clearActions?: { onClear: () => void };
   /** Present only for filed notes; `available` mirrors the translation settings. */
   translate?: {
     document: ViewerDocument;
@@ -32,6 +34,7 @@ export function NoteMoreMenu({
   disabled = false,
   onExport,
   refile,
+  clearActions,
   translate,
 }: NoteMoreMenuProps) {
   const [open, setOpen] = useState(false);
@@ -128,6 +131,14 @@ export function NoteMoreMenu({
                 onClick={() => choose(refile.onRefile)}
               >
                 Refile…
+              </button>
+              <div className="note-more-separator" role="separator" />
+            </>
+          ) : null}
+          {clearActions ? (
+            <>
+              <button type="button" role="menuitem" onClick={() => choose(clearActions.onClear)}>
+                Clear actions from this note
               </button>
               <div className="note-more-separator" role="separator" />
             </>

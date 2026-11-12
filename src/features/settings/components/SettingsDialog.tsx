@@ -12,6 +12,7 @@ import {
   BundleSettings,
   type BundleSettingsControls,
 } from "./BundleSettings.tsx";
+import { ReminderSettings } from "./ReminderSettings.tsx";
 import { UpdateSettings } from "./UpdateSettings.tsx";
 
 export type SettingsDialogProps = {
@@ -31,6 +32,7 @@ const FOCUSABLE_SELECTOR =
 const CATEGORIES = [
   ["bundles", "Bundles"],
   ["models", "Models"],
+  ["reminders", "Reminders"],
   ["appearance", "Appearance"],
   ["backup", "Backup"],
   ["updates", "Updates"],
@@ -178,6 +180,9 @@ export function SettingsDialog({
           </div>
           <div id="settings-panel-models" hidden={category !== "models"} aria-labelledby="settings-category-models">
             {modelSettings ? <ModelSettings controls={modelSettings} /> : null}
+          </div>
+          <div id="settings-panel-reminders" hidden={category !== "reminders"} aria-labelledby="settings-category-reminders">
+            {category === "reminders" ? <ReminderSettings /> : null}
           </div>
           <div id="settings-panel-appearance" hidden={category !== "appearance"} aria-labelledby="settings-category-appearance">
             <section className="settings-section" aria-labelledby={`${titleId}-appearance`}>

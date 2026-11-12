@@ -5,8 +5,29 @@ export function HomeToasts({ toasts, onDismiss }: { toasts: HomeToast[]; onDismi
   return (
     <div className="home-toasts" role="status" aria-live="polite" aria-atomic="false">
       {toasts.map((toast) => (
-        <div key={toast.key} className="home-toast">
-          <span>{toast.message}</span>
+        <div key={toast.key} className={`home-toast${toast.reminder ? " is-reminder" : ""}`}>
+          {toast.reminder ? (
+            <span className="home-toast-text">
+              <span className="home-toast-kicker">Reminder</span>
+              <strong>{toast.message}</strong>
+              {toast.reminder.detail && <small>{toast.reminder.detail}</small>}
+            </span>
+          ) : (
+            <span>{toast.message}</span>
+          )}
+          {toast.reminder?.actions.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              className="home-link-button"
+              onClick={() => {
+                item.run();
+                onDismiss(toast.key);
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
           {toast.undo && (
             <button
               type="button"

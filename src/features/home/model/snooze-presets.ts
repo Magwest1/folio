@@ -34,3 +34,17 @@ export function snoozePresets(now: Date, timeZone: string): SnoozePreset[] {
   });
   return presets;
 }
+
+/** "Fri 13, 09:00": where a snooze ends, in the words the undo toast uses. */
+export function snoozeLabel(until: string, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    weekday: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(until));
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("weekday")} ${part("day")}, ${part("hour")}:${part("minute")}`;
+}

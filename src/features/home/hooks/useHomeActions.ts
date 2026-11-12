@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActionItem, ActionPatch } from "../../../domain/types.ts";
-import { fetchActions, patchAction, transitionAction } from "../../../lib/api.ts";
+import {
+  clearNoteActions,
+  fetchActions,
+  patchAction,
+  snoozeActionWithPhrase,
+  transitionAction,
+  undoActionBatch,
+} from "../../../lib/api.ts";
 import {
   applyOptimistic,
   toastLabel,
@@ -9,13 +16,18 @@ import {
 } from "../model/action-mutations.ts";
 import { MAX_BUDGET } from "../model/time-buckets.ts";
 import { deviceTimeZone } from "../model/home-time.ts";
+import { snoozeLabel } from "../model/snooze-presets.ts";
 import { buildWeekBoard, type WeekBoard } from "../model/week-board.ts";
+
+export type HomeToastAction = { label: string; run: () => void };
 
 export type HomeToast = {
   key: number;
   message: string;
   /** Present while the change can still be taken back. */
   undo?: () => void;
+  /** A reminder is a quiet toast with its own choices instead of an undo. */
+  reminder?: { detail: string; actions: HomeToastAction[] };
 };
 
 type Options = {
@@ -31,6 +43,7 @@ type Options = {
 };
 
 const TOAST_MS = 8_000;
+const REMINDER_TOAST_MS = 25_000;
 const FOCUS_REFRESH_GAP_MS = 4_000;
 
 function replaceAction(list: ActionItem[], next: ActionItem): ActionItem[] {
@@ -124,10 +137,10 @@ export function useHomeActions({
     setToasts((current) => current.filter((toast) => toast.key !== key));
   }, []);
 
-  const showToast = useCallback((message: string, undo?: () => void) => {
+  const showToast = useCallback((message: string, undo?: () => void, reminder?: HomeToast["reminder"]) => {
     const key = ++toastKeyRef.current;
-    setToasts((current) => [...current.slice(-2), { key, message, undo }]);
-    window.setTimeout(() => dismissToast(key), TOAST_MS);
+    setToasts((current) => [...current.slice(-2), { key, message, undo, reminder }]);
+    window.setTimeout(() => dismissToast(key), reminder ? REMINDER_TOAST_MS : TOAST_MS);
     return key;
   }, [dismissToast]);
 
@@ -165,7 +178,8 @@ export function useHomeActions({
         .catch(() => undefined)
         .finally(settle);
     };
-    showToast(toastLabel(mutation), takeBack);
+    // Keeping an item changes nothing visible, so there is nothing to take back.
+    showToast(toastLabel(mutation), mutation.type === "keep" ? undefined : takeBack);
     try {
       const updated = await enqueue(id, () =>
         mutation.type === "edit"
@@ -181,10 +195,69 @@ export function useHomeActions({
     }
   }, [commit, enqueue, settle, showToast]);
 
+  /**
+   * Snoozes with words ("tomorrow after lunch"). The server reads the phrase, so nothing is shown until it
+   * answers; the result is the error to display next to the field, or null once it went through.
+   */
+  const snoozeWithPhrase = useCallback(async (id: string, phrase: string): Promise<string | null> => {
+    const before = actionsRef.current.find((item) => item.id === id);
+    if (!before) return "That card is no longer here.";
+    epochRef.current += 1;
+    pendingRef.current += 1;
+    try {
+      const updated = await enqueue(id, () => snoozeActionWithPhrase(id, phrase, timeZone));
+      commit((current) => replaceAction(current, updated));
+      showToast(`Snoozed until ${snoozeLabel(updated.until, timeZone)}.`, () => {
+        epochRef.current += 1;
+        pendingRef.current += 1;
+        commit((current) => replaceAction(current, before));
+        void enqueue(id, () => transitionAction(id, "undo"))
+          .then((restored) => commit((current) => replaceAction(current, restored)))
+          .catch(() => undefined)
+          .finally(settle);
+      });
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : "That didn't go through.";
+    } finally {
+      settle();
+    }
+  }, [commit, enqueue, settle, showToast, timeZone]);
+
+  /** Lets go of everything from one note, as a single step that can be taken back. */
+  const clearNote = useCallback(async (noteId: string, title: string | null) => {
+    epochRef.current += 1;
+    pendingRef.current += 1;
+    try {
+      const { ids } = await clearNoteActions(noteId);
+      const gone = new Set(ids);
+      commit((current) => current.filter((item) => !gone.has(item.id)));
+      if (ids.length === 0) {
+        showToast("Nothing open from this note.");
+        return;
+      }
+      const noun = ids.length === 1 ? "1 item" : `${ids.length} items`;
+      showToast(`Let go of ${noun} from ${title ?? "this note"}. They won't come back.`, () => {
+        epochRef.current += 1;
+        pendingRef.current += 1;
+        void undoActionBatch(ids)
+          .catch(() => undefined)
+          .finally(settle);
+      });
+    } catch {
+      showToast("That didn't go through. Nothing was changed.");
+    } finally {
+      settle();
+    }
+  }, [commit, settle, showToast]);
+
   const board: WeekBoard = useMemo(
     () => buildWeekBoard(actions, clock, timeZone, columns),
     [actions, clock, columns, timeZone],
   );
 
-  return { actions, board, loaded, unavailable, toasts, run, refresh, refreshSoon, dismissToast, timeZone, clock };
+  return {
+    actions, board, loaded, unavailable, toasts, run, refresh, refreshSoon, dismissToast, showToast,
+    snoozeWithPhrase, clearNote, timeZone, clock,
+  };
 }

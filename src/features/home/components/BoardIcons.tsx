@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type BoardIconName = "check" | "accept" | "snooze" | "edit" | "source" | "dismiss" | "not-action" | "restore";
+export type BoardIconName = "check" | "accept" | "snooze" | "edit" | "source" | "dismiss" | "not-action" | "restore" | "clear-note";
 
 const PATHS: Record<BoardIconName, ReactNode> = {
   check: <path d="M3.5 8.5 6.8 11.8 12.5 4.8" />,
@@ -21,6 +21,7 @@ const PATHS: Record<BoardIconName, ReactNode> = {
   ),
   "not-action": <path d="m4.5 4.5 7 7m0-7-7 7" />,
   restore: <path d="M3.5 8a4.5 4.5 0 1 0 1.4-3.3M3.5 3.2v2.6h2.6" />,
+  "clear-note": <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8h5.8l.6-8" />,
 };
 
 /** Small stroke icons. The buttons that hold them carry the accessible names. */

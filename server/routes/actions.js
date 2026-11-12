@@ -1,11 +1,16 @@
 import { KINDS, STATUSES, asList, httpError, normalizeKind, normalizeSource } from '../actions/validate.js'
 import { setTodoCheckbox, syncTodoListFromDisk } from '../actions/todo-sync.js'
+import { resolveSnoozePhrase } from '../reminders/snooze-phrase.js'
 
 const TRANSITIONS = {
   confirm: (store, id) => store.confirm(id),
   complete: (store, id) => store.complete(id),
   reopen: (store, id) => store.reopen(id),
-  snooze: (store, id, body) => store.snooze(id, body?.until ?? body?.snoozedUntil),
+  // Either an explicit time or a phrase in plain words ("tomorrow after lunch") read in the user's time zone.
+  snooze: (store, id, body) => store.snooze(id, body?.phrase !== undefined
+    ? resolveSnoozePhrase(body.phrase, { now: new Date(), timeZone: body.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone }).toISOString()
+    : body?.until ?? body?.snoozedUntil),
+  keep: (store, id) => store.touch(id),
   'let-go': (store, id) => store.letGo(id),
   reject: (store, id) => store.reject(id),
   undo: (store, id) => store.undo(id),
@@ -133,7 +138,8 @@ export function registerRoutes(app, runtime) {
             console.error(`Could not update the todo list checkbox. ${error.message}`)
           }
         }
-        response.json(store.get(action.id))
+        const view = store.get(action.id)
+        response.json(name === 'snooze' ? { ...view, until: view.snoozedUntil } : view)
       } catch (error) { fail(response, next, error) }
     })
   }

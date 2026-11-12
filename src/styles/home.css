@@ -460,6 +460,17 @@
   line-height: 1.5;
 }
 
+.board-card-checkin {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  color: var(--dim);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
 .board-card-actions {
   position: absolute;
   right: -3px;
@@ -742,6 +753,28 @@
   font-size: 10px;
 }
 
+.home-snooze-phrase {
+  margin: 4px 0 0;
+  padding: 6px 6px 4px;
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.home-snooze-phrase input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.home-snooze-error {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 /* Inline edit */
 
 .home-edit-form {
@@ -812,6 +845,31 @@
   font-size: 12px;
   pointer-events: auto;
   animation: board-card-in 180ms ease-out;
+}
+
+.home-toast.is-reminder {
+  border-left-color: var(--blue);
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.home-toast-text {
+  min-width: 0;
+  flex: 1 1 100%;
+  display: grid;
+  gap: 1px;
+}
+
+.home-toast-text strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.home-toast-kicker {
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
 }
 
 @keyframes board-card-in {

@@ -315,5 +315,28 @@ export type ActionTransition =
   | "snooze"
   | "let-go"
   | "reject"
-  | "undo";
+  | "undo"
+  | "keep";
 export type ActionPatch = Partial<Pick<ActionItem, "text" | "kind" | "person" | "due">>;
+
+export type ReminderLevel = "off" | "gentle" | "normal";
+export type ReminderSettings = {
+  level: ReminderLevel;
+  quietHours: { enabled: boolean; start: string; end: string };
+  morningBrief: { enabled: boolean; time: string };
+  stillRelevantAfterDays: number;
+  fadeAfterDays: number;
+};
+export type ReminderItem = {
+  id: string;
+  kind: "action" | "group" | "brief";
+  title: string;
+  body: string;
+  actionIds: string[];
+  at: string;
+  level: ReminderLevel;
+  silent: boolean;
+};
+export type ReminderCheckin = { actionId: string; since: string };
+export type PendingReminders = { reminders: ReminderItem[]; checkins: ReminderCheckin[] };
+export type ActionSuppressions = { sources: string[]; kinds: ActionKind[] };

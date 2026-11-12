@@ -9,4 +9,6 @@ export type HomeWorkspaceBindings = {
   /** Moves the text into a normal draft tab with the caret at its end. */
   openCaptureAsDraft: (groupId: string, text: string) => void;
   openSource: (action: ActionItem) => void;
+  /** Set when a system notification was clicked: the card to land on once Home is showing. */
+  focusAction: { id: string | null; seq: number } | null;
 };

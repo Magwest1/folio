@@ -22,6 +22,7 @@ import { createHistoryService } from './history/service.js'
 import { createTranslationService } from './translation/service.js'
 import { createActionStore } from './actions/store.js'
 import { createActionService } from './actions/service.js'
+import { createReminderService } from './reminders/service.js'
 import { registerRoutes as registerMlxRoutes } from './routes/mlx.js'
 import { registerRoutes as registerSystemRoutes } from './routes/system.js'
 import { registerRoutes as registerFileRoutes } from './routes/files.js'
@@ -37,6 +38,7 @@ import { registerRoutes as registerBundleRoutes } from './routes/bundles.js'
 import { registerRoutes as registerHistoryRoutes } from './routes/history.js'
 import { registerRoutes as registerTranslationRoutes } from './routes/translation.js'
 import { registerRoutes as registerActionRoutes } from './routes/actions.js'
+import { registerRoutes as registerReminderRoutes } from './routes/reminders.js'
 import { registerRoutes as registerTranscriptionRoutes } from './transcription/routes.js'
 import { createBundleRuntimeManager } from './bundles/registry.js'
 
@@ -58,6 +60,7 @@ export function createRuntime(env = process.env, sharedMlxService = null) {
   runtime.translation = createTranslationService(runtime)
   runtime.actionStore = createActionStore({ filePath: path.join(runtime.bundleRoot, '.folio', 'actions.json') })
   runtime.actions = createActionService(runtime)
+  runtime.reminders = createReminderService(runtime)
   return runtime
 }
 
@@ -80,6 +83,7 @@ export async function createApp(runtime = createRuntime()) {
     }, runtime.mlxService),
   })
   const initialBundles = await manager.initialize()
+  manager.startReminders()
   await runtime.transcriptionService.recoverInterrupted()
   const legacyBundle = initialBundles.find((bundle) => bundle.markdownPath === runtime.bundleRoot)
   if (legacyBundle) {
@@ -91,6 +95,7 @@ export async function createApp(runtime = createRuntime()) {
     await runtime.reindexBundle()
     runtime.translation.startBackfill()
     runtime.actions.startBackfill()
+    runtime.reminders.start()
     manager.trackBackground(
       runtime.history.reconcile('Baseline'),
       'Could not initialize note history.',
@@ -138,6 +143,7 @@ export async function createApp(runtime = createRuntime()) {
   registerHistoryRoutes(app, scopedRuntime)
   registerTranslationRoutes(app, scopedRuntime)
   registerActionRoutes(app, scopedRuntime)
+  registerReminderRoutes(app, scopedRuntime)
   registerTranscriptionRoutes(app, scopedRuntime)
   registerCaptureRoutes(app, scopedRuntime)
   registerConfirmationRoutes(app, scopedRuntime)

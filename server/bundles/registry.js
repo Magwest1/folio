@@ -270,6 +270,8 @@ export function createBundleRuntimeManager({ config, defaultRuntime, createRunti
         await runtime.reindexBundle()
         runtime.translation?.startBackfill()
         runtime.actions?.startBackfill()
+        watchReminders(runtime)
+        runtime.reminders?.start()
         if (runtime.history) trackBackground(
           runtime.history.reconcile('Baseline'),
           'Could not initialize note history.',
@@ -302,6 +304,7 @@ export function createBundleRuntimeManager({ config, defaultRuntime, createRunti
       ...Array.from(allRuntimes, (runtime) => runtime.translation?.close?.()),
       ...Array.from(allRuntimes, (runtime) => runtime.actionStore?.flush?.()),
       ...Array.from(allRuntimes, (runtime) => runtime.actions?.close?.()),
+      ...Array.from(allRuntimes, (runtime) => runtime.reminders?.close?.()),
       defaultRuntime.mlxService?.close?.(),
     ])
   }
@@ -315,6 +318,7 @@ export function createBundleRuntimeManager({ config, defaultRuntime, createRunti
         if (property === 'translation') return activeRuntime().translation
         if (property === 'actionStore') return activeRuntime().actionStore
         if (property === 'actions') return activeRuntime().actions
+        if (property === 'reminders') return activeRuntime().reminders
         const propertyName = String(property)
         const defaultValue = Reflect.get(defaultRuntime, property, defaultRuntime)
         if (typeof defaultValue !== 'function') return defaultValue
@@ -348,11 +352,42 @@ export function createBundleRuntimeManager({ config, defaultRuntime, createRunti
     return registry.list()
   }
 
+  // Reminders must run for every attached bundle, not only the one a request happens to touch.
+  const reminderListeners = new Set()
+  const watched = new Set()
+  function watchReminders(runtime) {
+    if (!runtime?.reminders || watched.has(runtime)) return
+    watched.add(runtime)
+    runtime.reminders.onReminder((reminder) => {
+      for (const listener of reminderListeners) listener(reminder, runtime)
+    })
+  }
+  function startReminders() {
+    for (const entry of registry.list()) {
+      const runtime = runtimeFor(entry)
+      watchReminders(runtime)
+      runtime.reminders?.start()
+    }
+  }
+  // Calls `listener(reminder, runtime)` for reminders from every bundle. Returns an unsubscribe function.
+  // After sleep or a clock change: every bundle re-plans against the real time.
+  function replanReminders() {
+    for (const runtime of watched) runtime.reminders?.replan()
+  }
+  function onReminder(listener) {
+    reminderListeners.add(listener)
+    watchReminders(defaultRuntime)
+    return () => reminderListeners.delete(listener)
+  }
+
   return {
     config,
     registry,
     initialize,
     runtimeFor,
+    startReminders,
+    onReminder,
+    replanReminders,
     prepare,
     preparePending,
     activeRuntime,
