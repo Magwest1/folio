@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
+import { reanchorNote } from '../actions/hooks.js'
 import { normalizeAggregateBaseContent, prepareAggregateContentForSave } from '../filing/aggregate-editing.js'
 
 export function registerRoutes(app, runtime) {
@@ -126,6 +127,8 @@ app.post('/api/file/move', async (request, response, next) => {
     if (moveResult.warning) void refreshMissingEmbeddingsInBackground()
     runtime.translation?.moveNote(moveResult.oldId, moveResult.newId)
     runtime.translation?.enqueue(moveResult.newId)
+    runtime.actionStore?.moveNote(moveResult.oldId, moveResult.newId)
+    reanchorNote(runtime, moveResult.newId, current.content)
     response.json({
       oldId: moveResult.oldId,
       newId: moveResult.newId,
@@ -267,6 +270,8 @@ app.post('/api/file/refile', async (request, response, next) => {
     if (warning) void refreshMissingEmbeddingsInBackground()
     runtime.translation?.moveNote(outcome.oldId, outcome.newId)
     runtime.translation?.enqueue(outcome.newId)
+    runtime.actionStore?.moveNote(outcome.oldId, outcome.newId)
+    reanchorNote(runtime, outcome.newId, outcome.record.content)
     response.json({
       oldId: outcome.oldId,
       newId: outcome.newId,
@@ -415,6 +420,7 @@ app.patch('/api/note', async (request, response, next) => {
 
     const { newId, updated, currentRecords, warning } = updateResult
     if (hasContent || hasTitle || hasDescription) runtime.translation?.enqueue(newId)
+    if (hasContent) reanchorNote(runtime, newId, updated.content)
     if (warning) void refreshMissingEmbeddingsInBackground()
     let historyWarning = null
     if (refreshEmbeddings === true || (hasMarkdownChanges && !contentAutosaveOnly)) {

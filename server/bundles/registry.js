@@ -299,6 +299,7 @@ export function createBundleRuntimeManager({ config, defaultRuntime, createRunti
       ...Array.from(allRuntimes, (runtime) => runtime.history?.close?.()),
       ...Array.from(allRuntimes, (runtime) => runtime.transcriptionService?.close?.()),
       ...Array.from(allRuntimes, (runtime) => runtime.translation?.close?.()),
+      ...Array.from(allRuntimes, (runtime) => runtime.actionStore?.flush?.()),
       defaultRuntime.mlxService?.close?.(),
     ])
   }
@@ -310,6 +311,7 @@ export function createBundleRuntimeManager({ config, defaultRuntime, createRunti
         if (property === 'getRawRoot') return () => activeRuntime().rawRoot
         if (property === 'history') return activeRuntime().history
         if (property === 'translation') return activeRuntime().translation
+        if (property === 'actionStore') return activeRuntime().actionStore
         const propertyName = String(property)
         const defaultValue = Reflect.get(defaultRuntime, property, defaultRuntime)
         if (typeof defaultValue !== 'function') return defaultValue
