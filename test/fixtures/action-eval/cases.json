@@ -1,0 +1,1792 @@
+[
+  {
+    "id": "en-001",
+    "language": "en",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "- [ ] Send invoice to Harper by Friday",
+    "expected": [
+      {
+        "quote": "- [ ] Send invoice to Harper by Friday",
+        "kind": "task",
+        "person": "Harper",
+        "due": {
+          "date": "2026-11-13"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "checkbox",
+      "deadline"
+    ]
+  },
+  {
+    "id": "en-002",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Wrap-up\n- [x] Book flights to Bergen\n- [ ] Reserve hotel near the station\n- [x] Email Tomas the agenda",
+    "expected": [
+      {
+        "quote": "- [ ] Reserve hotel near the station",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "checkbox",
+      "completion",
+      "negative"
+    ],
+    "completions": [
+      {
+        "quote": "- [x] Book flights to Bergen"
+      },
+      {
+        "quote": "- [x] Email Tomas the agenda"
+      }
+    ]
+  },
+  {
+    "id": "en-003",
+    "language": "en",
+    "source": "note",
+    "now": "2026-03-02T08:15:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "# Product sync, 2 March\n\nAttendees: Nora, Daniel, Priya\n\n- Priya presented the onboarding numbers. Drop-off at step 3 is still high.\n- Daniel will update the pricing page next week.\n- I'll draft the release notes by Thursday.\n- Nora is waiting for legal to approve the privacy copy.\n- We decided to postpone the redesign.",
+    "expected": [
+      {
+        "quote": "I'll draft the release notes by Thursday.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": {
+          "date": "2026-03-05"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "meeting",
+      "deadline",
+      "other-person",
+      "negative"
+    ]
+  },
+  {
+    "id": "en-004",
+    "language": "en",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Waiting for Elena to send the signed contract.\nPing her on Monday if nothing arrives.",
+    "expected": [
+      {
+        "quote": "Waiting for Elena to send the signed contract.",
+        "kind": "waiting-on",
+        "person": "Elena",
+        "due": null,
+        "explicit": false
+      },
+      {
+        "quote": "Ping her on Monday if nothing arrives.",
+        "kind": "follow-up",
+        "person": null,
+        "due": {
+          "date": "2026-11-16"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "waiting",
+      "deadline"
+    ]
+  },
+  {
+    "id": "en-005",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Maybe we could move the launch to April. It would be nice to redo the logo at some point, and perhaps we should look at a different host.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "hypothetical"
+    ]
+  },
+  {
+    "id": "en-006",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "I sent the proposal to Marcus on Tuesday and called the bank yesterday. Everything is filed now.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "past-tense",
+      "completion"
+    ],
+    "completions": [
+      {
+        "quote": "I sent the proposal to Marcus on Tuesday and called the bank yesterday."
+      },
+      {
+        "quote": "Everything is filed now."
+      }
+    ]
+  },
+  {
+    "id": "en-007",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "I don't need to renew the passport this year. No need to call the landlord either, he already confirmed.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "negation"
+    ]
+  },
+  {
+    "id": "en-008",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "> Remember to submit the timesheet by Friday\n> from the HR email\n\nStill reading through the policy update.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "quote"
+    ]
+  },
+  {
+    "id": "en-009",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Notes on the deploy script:\n\n```sh\n# TODO: remove this hack before release\nnpm run build && ./deploy.sh\n```\n\nIt works but feels fragile.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "code"
+    ]
+  },
+  {
+    "id": "en-010",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Should I email Ravi about the budget? Do we need to book the room for Thursday? Not sure who owns the vendor list.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "question"
+    ]
+  },
+  {
+    "id": "en-011",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "# Pancakes\n\nIngredients: 2 eggs, 200 g flour, 4 dl milk.\n\n1. Whisk the eggs and flour together.\n2. Add milk and stir until smooth.\n3. Fry in butter for two minutes per side.\n\nServe with jam.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "reference-imperative"
+    ]
+  },
+  {
+    "id": "en-012",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Router notes\n\nTo reset the router: unplug it, wait 30 seconds, plug it back in. Then open the admin page and check the firmware version.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "reference-imperative"
+    ]
+  },
+  {
+    "id": "en-013",
+    "language": "en",
+    "source": "note",
+    "now": "2026-06-17T13:20:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Thinking about the last few months. Work has been intense, and I keep noticing how much I lean on the same three friends when things get hard. I want to be better at showing up for them too.\n\nSomewhere in the middle of all that: I'll call Sofia on Monday to see how the move went. She sounded tired last time.\n\nAnyway, the garden is finally doing something. The tomatoes are huge this year and the basil keeps coming back no matter what I do. I should write down which varieties worked.",
+    "expected": [
+      {
+        "quote": "I'll call Sofia on Monday to see how the move went.",
+        "kind": "my-commitment",
+        "person": "Sofia",
+        "due": {
+          "date": "2026-06-22"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "long",
+      "buried",
+      "deadline"
+    ]
+  },
+  {
+    "id": "en-014",
+    "language": "en",
+    "source": "transcript",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "speaker1:: Speaker 1\nspeaker2:: Speaker 2\n\n**{{speaker1}}** [00:00]\nOkay, thanks for joining. Quick update on the Oslo trip.\n\n**{{speaker2}}** [00:14]\nSure. I booked the train already. Prices went up a bit though.\n\n**{{speaker1}}** [00:31]\nGreat. And I'll talk to Jonas about the venue. I'll also send everyone the schedule tomorrow.",
+    "expected": [
+      {
+        "quote": "I'll talk to Jonas about the venue.",
+        "kind": "my-commitment",
+        "person": "Jonas",
+        "due": null,
+        "explicit": false
+      },
+      {
+        "quote": "I'll also send everyone the schedule tomorrow.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": {
+          "date": "2026-11-13"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "transcript",
+      "speakers",
+      "deadline",
+      "no-owner"
+    ],
+    "completions": [
+      {
+        "quote": "I booked the train already."
+      }
+    ]
+  },
+  {
+    "id": "en-015",
+    "language": "en",
+    "source": "transcript",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "[00:00] So the main thing this week is the vendor contract. [00:19] I think I need to get the numbers from finance first. [00:41] Right, and then we can decide.",
+    "expected": [
+      {
+        "quote": "I think I need to get the numbers from finance first.",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "transcript",
+      "no-speakers"
+    ]
+  },
+  {
+    "id": "en-016",
+    "language": "en",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "call mom saturday",
+    "expected": [
+      {
+        "quote": "call mom saturday",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "date": "2026-11-14"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture",
+      "deadline"
+    ]
+  },
+  {
+    "id": "en-017",
+    "language": "en",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "TODO: renew gym membership",
+    "expected": [
+      {
+        "quote": "TODO: renew gym membership",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "todo-marker"
+    ]
+  },
+  {
+    "id": "en-018",
+    "language": "en",
+    "source": "note",
+    "now": "2026-12-29T16:40:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "End of year admin.\n\nI'll send the tax documents to Hannah on 5 January. Also need to cancel the old phone plan in three days.",
+    "expected": [
+      {
+        "quote": "I'll send the tax documents to Hannah on 5 January.",
+        "kind": "my-commitment",
+        "person": "Hannah",
+        "due": {
+          "date": "2027-01-05"
+        },
+        "explicit": true
+      },
+      {
+        "quote": "Also need to cancel the old phone plan in three days.",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "date": "2027-01-01"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "year-boundary",
+      "deadline"
+    ]
+  },
+  {
+    "id": "en-019",
+    "language": "en",
+    "source": "note",
+    "now": "2026-12-29T16:40:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Planning notes.\n\nFollow up with Mia about the roadmap next week. The team meeting is on Wednesday at 3pm.",
+    "expected": [
+      {
+        "quote": "Follow up with Mia about the roadmap next week.",
+        "kind": "follow-up",
+        "person": "Mia",
+        "due": {
+          "window": {
+            "start": "2027-01-04",
+            "end": "2027-01-10"
+          }
+        },
+        "explicit": false
+      },
+      {
+        "quote": "The team meeting is on Wednesday at 3pm.",
+        "kind": "event",
+        "person": null,
+        "due": {
+          "date": "2026-12-30",
+          "time": "15:00"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "year-boundary",
+      "event",
+      "week-window"
+    ]
+  },
+  {
+    "id": "en-020",
+    "language": "en",
+    "source": "capture",
+    "now": "2026-01-30T10:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "tomorrow: drop off the keys with Viktor\nin 3 days: send the report to accounting",
+    "expected": [
+      {
+        "quote": "tomorrow: drop off the keys with Viktor",
+        "kind": "task",
+        "person": "Viktor",
+        "due": {
+          "date": "2026-01-31"
+        },
+        "explicit": false
+      },
+      {
+        "quote": "in 3 days: send the report to accounting",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "date": "2026-02-02"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "month-boundary",
+      "deadline"
+    ]
+  },
+  {
+    "id": "en-021",
+    "language": "en",
+    "source": "note",
+    "now": "2026-01-30T10:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "I promise to finish the grant application by the end of the month. It is a lot but doable.",
+    "expected": [
+      {
+        "quote": "I promise to finish the grant application by the end of the month.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": {
+          "window": {
+            "start": "2026-01-31",
+            "end": "2026-01-31"
+          }
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "month-boundary",
+      "deadline"
+    ]
+  },
+  {
+    "id": "en-022",
+    "language": "en",
+    "source": "note",
+    "now": "2026-02-26T18:05:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Landlord says the inspection is in 4 days. I will clean the bathroom and tidy the hallway before that.",
+    "expected": [
+      {
+        "quote": "Landlord says the inspection is in 4 days.",
+        "kind": "event",
+        "person": null,
+        "due": {
+          "date": "2026-03-02"
+        },
+        "explicit": false
+      },
+      {
+        "quote": "I will clean the bathroom and tidy the hallway before that.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "month-boundary",
+      "event"
+    ]
+  },
+  {
+    "id": "en-023",
+    "language": "en",
+    "source": "capture",
+    "now": "2026-03-28T20:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Dentist appointment tomorrow at 9:30\nremember to bring the insurance card",
+    "expected": [
+      {
+        "quote": "Dentist appointment tomorrow at 9:30",
+        "kind": "event",
+        "person": null,
+        "due": {
+          "date": "2026-03-29",
+          "time": "09:30"
+        },
+        "explicit": false
+      },
+      {
+        "quote": "remember to bring the insurance card",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "dst",
+      "event"
+    ]
+  },
+  {
+    "id": "en-024",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Follow up with Lena next week about the freelance rate. She said she would think about it.",
+    "expected": [
+      {
+        "quote": "Follow up with Lena next week about the freelance rate.",
+        "kind": "follow-up",
+        "person": "Lena",
+        "due": {
+          "window": {
+            "start": "2026-11-16",
+            "end": "2026-11-22"
+          }
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "follow-up",
+      "week-window"
+    ]
+  },
+  {
+    "id": "en-025",
+    "language": "en",
+    "source": "note",
+    "now": "2026-10-27T11:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Retro notes\n\n- Went well: the demo, the new onboarding doc\n- Went badly: flaky tests, too many meetings\n- Ben will fix the flaky tests.\n- Zoe asked me to look at the CI cache, so I'll do that by Friday.\n- Waiting on Ben for the test report.",
+    "expected": [
+      {
+        "quote": "Zoe asked me to look at the CI cache, so I'll do that by Friday.",
+        "kind": "my-commitment",
+        "person": "Zoe",
+        "due": {
+          "date": "2026-10-30"
+        },
+        "explicit": true
+      },
+      {
+        "quote": "Waiting on Ben for the test report.",
+        "kind": "waiting-on",
+        "person": "Ben",
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "meeting",
+      "waiting",
+      "other-person"
+    ]
+  },
+  {
+    "id": "en-026",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Quote from the book: \"You should call your parents more often, and write letters.\" I liked that line. He wrote it in 1952.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "quote",
+      "history-date"
+    ]
+  },
+  {
+    "id": "en-027",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Team update\n\nSara will send the slides. Omar is booking the room. Leo is responsible for catering this time.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "other-person",
+      "meeting"
+    ]
+  },
+  {
+    "id": "en-028",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "The company was founded on 3 April 2012 and moved into the new office in 2018. Revenue doubled in 2021.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "history-date"
+    ]
+  },
+  {
+    "id": "en-029",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Last week I finished the draft, emailed Priya, and booked the venue. Done and dusted.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "past-tense",
+      "completion"
+    ],
+    "completions": [
+      {
+        "quote": "Last week I finished the draft, emailed Priya, and booked the venue."
+      },
+      {
+        "quote": "Done and dusted."
+      }
+    ]
+  },
+  {
+    "id": "en-030",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "- [ ] Pay electricity bill\n- [ ] Order new charger\n- [x] Water the plants",
+    "expected": [
+      {
+        "quote": "- [ ] Pay electricity bill",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      },
+      {
+        "quote": "- [ ] Order new charger",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "checkbox",
+      "completion"
+    ],
+    "completions": [
+      {
+        "quote": "- [x] Water the plants"
+      }
+    ]
+  },
+  {
+    "id": "en-031",
+    "language": "en",
+    "source": "note",
+    "now": "2026-06-17T13:20:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "I'll meet Alex on Friday at 3pm to go through the contract.",
+    "expected": [
+      {
+        "quote": "I'll meet Alex on Friday at 3pm to go through the contract.",
+        "kind": "my-commitment",
+        "person": "Alex",
+        "due": {
+          "date": "2026-06-19",
+          "time": "15:00"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "deadline",
+      "time-of-day"
+    ]
+  },
+  {
+    "id": "en-032",
+    "language": "en",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "buy birthday gift for Ida by friday",
+    "expected": [
+      {
+        "quote": "buy birthday gift for Ida by friday",
+        "kind": "task",
+        "person": "Ida",
+        "due": {
+          "date": "2026-11-13"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture"
+    ]
+  },
+  {
+    "id": "en-033",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "If the client signs off we should maybe think about hiring someone. I might email Noah at some point but nothing is decided.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "hypothetical"
+    ]
+  },
+  {
+    "id": "en-034",
+    "language": "en",
+    "source": "note",
+    "now": "2026-03-02T08:15:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Thoughts after the call\n\nI said I would send Rachel the revised quote in two weeks. Haven't started yet.",
+    "expected": [
+      {
+        "quote": "I said I would send Rachel the revised quote in two weeks.",
+        "kind": "my-commitment",
+        "person": "Rachel",
+        "due": {
+          "date": "2026-03-16"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "deadline",
+      "long"
+    ]
+  },
+  {
+    "id": "en-035",
+    "language": "en",
+    "source": "transcript",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "[00:03] Thanks everyone. [00:09] We'll circulate the minutes after the call. [00:30] Priya, can you send me the data export? [00:35] Sure, I can do that tomorrow afternoon. [01:02] I'll check with procurement and let you know.",
+    "expected": [
+      {
+        "quote": "Priya, can you send me the data export?",
+        "kind": "waiting-on",
+        "person": "Priya",
+        "due": null,
+        "explicit": false
+      },
+      {
+        "quote": "I'll check with procurement and let you know.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "transcript",
+      "no-speakers"
+    ]
+  },
+  {
+    "id": "en-036",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Reference: Git cheatsheet\n\nRun git status to see changes. Commit often. Push to the remote branch before you leave. Never force push to main.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "reference-imperative"
+    ]
+  },
+  {
+    "id": "en-037",
+    "language": "en",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "The dentist said I should floss more. Not sure that will happen.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "hypothetical"
+    ]
+  },
+  {
+    "id": "no-001",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "- [ ] Ringe Kari om leiekontrakten innen fredag",
+    "expected": [
+      {
+        "quote": "- [ ] Ringe Kari om leiekontrakten innen fredag",
+        "kind": "task",
+        "person": "Kari",
+        "due": {
+          "date": "2026-11-13"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "checkbox",
+      "deadline"
+    ]
+  },
+  {
+    "id": "no-002",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Ukeplan\n- [x] Sende inn skattemeldingen\n- [ ] Bestille time hos optiker\n- [x] Levere tilbake boka på biblioteket",
+    "expected": [
+      {
+        "quote": "- [ ] Bestille time hos optiker",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "checkbox",
+      "completion",
+      "negative"
+    ],
+    "completions": [
+      {
+        "quote": "- [x] Sende inn skattemeldingen"
+      },
+      {
+        "quote": "- [x] Levere tilbake boka på biblioteket"
+      }
+    ]
+  },
+  {
+    "id": "no-003",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Jeg skal sende rapporten til Henrik i morgen.",
+    "expected": [
+      {
+        "quote": "Jeg skal sende rapporten til Henrik i morgen.",
+        "kind": "my-commitment",
+        "person": "Henrik",
+        "due": {
+          "date": "2026-11-13"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "deadline"
+    ]
+  },
+  {
+    "id": "no-004",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Jeg må huske å bestille time hos tannlegen.",
+    "expected": [
+      {
+        "quote": "Jeg må huske å bestille time hos tannlegen.",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture"
+    ]
+  },
+  {
+    "id": "no-005",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "husk å kjøpe melk og brød på vei hjem",
+    "expected": [
+      {
+        "quote": "husk å kjøpe melk og brød på vei hjem",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture"
+    ]
+  },
+  {
+    "id": "no-006",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Venter på svar fra Silje om budsjettet.",
+    "expected": [
+      {
+        "quote": "Venter på svar fra Silje om budsjettet.",
+        "kind": "waiting-on",
+        "person": "Silje",
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "waiting"
+    ]
+  },
+  {
+    "id": "no-007",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Venter på at Ola sender kontrakten. Hvis ikke den kommer innen onsdag, ringer jeg ham.",
+    "expected": [
+      {
+        "quote": "Venter på at Ola sender kontrakten.",
+        "kind": "waiting-on",
+        "person": "Ola",
+        "due": null,
+        "explicit": false
+      },
+      {
+        "quote": "Hvis ikke den kommer innen onsdag, ringer jeg ham.",
+        "kind": "follow-up",
+        "person": null,
+        "due": {
+          "date": "2026-11-18"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "waiting",
+      "deadline"
+    ]
+  },
+  {
+    "id": "no-008",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Jeg sendte fakturaen i går, og Per ringte tilbake i dag. Alt er ferdig nå.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "past-tense",
+      "completion"
+    ],
+    "completions": [
+      {
+        "quote": "Jeg sendte fakturaen i går, og Per ringte tilbake i dag."
+      },
+      {
+        "quote": "Alt er ferdig nå."
+      }
+    ]
+  },
+  {
+    "id": "no-009",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Kanskje vi kunne flytte møtet til neste uke. Det hadde vært fint å få på plass en ny sofa en gang, men ingenting er bestemt.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "hypothetical"
+    ]
+  },
+  {
+    "id": "no-010",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Jeg trenger ikke å ringe banken. Vi skal ikke bestille noe mer før nyttår.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "negation"
+    ]
+  },
+  {
+    "id": "no-011",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "> Husk å levere skjemaet innen 15. mars\n> fra e-posten til skolen\n\nLeser fortsatt gjennom innkallingen.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "quote"
+    ]
+  },
+  {
+    "id": "no-012",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Notater om byggescriptet:\n\n```sh\n# TODO: fjern denne snarveien før release\nnpm run build\n```\n\nVirker, men er skjør.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "code"
+    ]
+  },
+  {
+    "id": "no-013",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Skal jeg ringe Mari i dag? Må vi bestille bord til fredag? Vet ikke hvem som har ansvar for gjesteliste.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "question"
+    ]
+  },
+  {
+    "id": "no-014",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "# Lapper\n\nIngredienser: 3 egg, 3 dl mel, 5 dl melk.\n\n1. Visp eggene og melet sammen.\n2. Tilsett melk og rør til røren er glatt.\n3. Stek i smør i to minutter på hver side.\n\nServer med syltetøy.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "reference-imperative"
+    ]
+  },
+  {
+    "id": "no-015",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Slik tømmer du hurtigbufferen: åpne innstillinger, trykk på Avansert, og velg Tøm. Start nettleseren på nytt etterpå.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "reference-imperative"
+    ]
+  },
+  {
+    "id": "no-016",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Vi flyttet inn 1. mars 2019 og pusset opp kjøkkenet i 2021. Taket ble skiftet i oktober 2023.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "history-date"
+    ]
+  },
+  {
+    "id": "no-017",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Tannlegetime torsdag 19. november kl. 14.30",
+    "expected": [
+      {
+        "quote": "Tannlegetime torsdag 19. november kl. 14.30",
+        "kind": "event",
+        "person": null,
+        "due": {
+          "date": "2026-11-19",
+          "time": "14:30"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "event",
+      "time-of-day"
+    ]
+  },
+  {
+    "id": "no-018",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Møte med Ingrid fredag kl 10",
+    "expected": [
+      {
+        "quote": "Møte med Ingrid fredag kl 10",
+        "kind": "event",
+        "person": "Ingrid",
+        "due": {
+          "date": "2026-11-13",
+          "time": "10:00"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "event",
+      "time-of-day"
+    ]
+  },
+  {
+    "id": "no-019",
+    "language": "no",
+    "source": "note",
+    "now": "2026-10-27T11:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Tenker mye på høsten og hvor fort alt går. Barna har begynt på nye aktiviteter, og jeg merker at jeg er mer sliten enn jeg ville innrømme.\n\nUnder alt dette: Jeg skal ringe Anders på mandag og høre om hytta. Han nevnte noe om at prisen kunne gå ned.\n\nElles har jeg begynt å gå turer om morgenen. Det gjør godt for hodet. Jeg bør skrive ned hvilke ruter som er best.",
+    "expected": [
+      {
+        "quote": "Jeg skal ringe Anders på mandag og høre om hytta.",
+        "kind": "my-commitment",
+        "person": "Anders",
+        "due": {
+          "date": "2026-11-02"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "long",
+      "buried",
+      "deadline"
+    ]
+  },
+  {
+    "id": "no-020",
+    "language": "no",
+    "source": "note",
+    "now": "2026-03-02T08:15:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "# Referat fra prosjektmøte, 2. mars\n\nTilstede: Sondre, Maja, Pia\n\n- Maja presenterte statusen. Vi ligger litt etter planen.\n- Sondre sender oppdatert tidsplan.\n- Jeg skal skrive utkast til kommunikasjonsplanen innen torsdag.\n- Pia venter på godkjenning fra økonomi.\n- Vi besluttet å utsette lanseringen.",
+    "expected": [
+      {
+        "quote": "Jeg skal skrive utkast til kommunikasjonsplanen innen torsdag.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": {
+          "date": "2026-03-05"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "meeting",
+      "deadline",
+      "other-person",
+      "negative"
+    ]
+  },
+  {
+    "id": "no-021",
+    "language": "no",
+    "source": "transcript",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "[00:00] Da starter vi. [00:12] Jeg sender deg tilbudet i morgen, så kan du se på det. [00:40] Fint. [00:58] Og så må vi snakke med Torunn om leveransen.",
+    "expected": [
+      {
+        "quote": "Jeg sender deg tilbudet i morgen, så kan du se på det.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": {
+          "date": "2026-11-13"
+        },
+        "explicit": true
+      },
+      {
+        "quote": "Og så må vi snakke med Torunn om leveransen.",
+        "kind": "follow-up",
+        "person": "Torunn",
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "transcript",
+      "no-speakers",
+      "deadline"
+    ]
+  },
+  {
+    "id": "no-022",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Følge opp Lise neste uke angående avtalen.",
+    "expected": [
+      {
+        "quote": "Følge opp Lise neste uke angående avtalen.",
+        "kind": "follow-up",
+        "person": "Lise",
+        "due": {
+          "window": {
+            "start": "2026-11-16",
+            "end": "2026-11-22"
+          }
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "follow-up",
+      "week-window"
+    ]
+  },
+  {
+    "id": "no-023",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "TODO: Oppdater nettsiden innen slutten av måneden",
+    "expected": [
+      {
+        "quote": "TODO: Oppdater nettsiden innen slutten av måneden",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "window": {
+            "start": "2026-11-30",
+            "end": "2026-11-30"
+          }
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "todo-marker",
+      "deadline"
+    ]
+  },
+  {
+    "id": "no-024",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Kari skal ringe kunden i morgen. Thomas tar seg av bestillingen, og Mina fikser lokalet.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "other-person"
+    ]
+  },
+  {
+    "id": "no-025",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Om to uker må jeg levere utkastet til Marte.",
+    "expected": [
+      {
+        "quote": "Om to uker må jeg levere utkastet til Marte.",
+        "kind": "task",
+        "person": "Marte",
+        "due": {
+          "date": "2026-11-26"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "deadline"
+    ]
+  },
+  {
+    "id": "no-026",
+    "language": "no",
+    "source": "note",
+    "now": "2026-12-29T16:40:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Årsskifte.\n\nJeg skal levere skjemaene til Eirik 6. januar. Husk å si opp abonnementet om tre dager, ellers fornyes det.",
+    "expected": [
+      {
+        "quote": "Jeg skal levere skjemaene til Eirik 6. januar.",
+        "kind": "my-commitment",
+        "person": "Eirik",
+        "due": {
+          "date": "2027-01-06"
+        },
+        "explicit": true
+      },
+      {
+        "quote": "Husk å si opp abonnementet om tre dager, ellers fornyes det.",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "date": "2027-01-01"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "year-boundary",
+      "deadline"
+    ]
+  },
+  {
+    "id": "no-027",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-01-30T10:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "i morgen: levere nøklene til Vegard\nom tre dager: sende rapporten til regnskap",
+    "expected": [
+      {
+        "quote": "i morgen: levere nøklene til Vegard",
+        "kind": "task",
+        "person": "Vegard",
+        "due": {
+          "date": "2026-01-31"
+        },
+        "explicit": false
+      },
+      {
+        "quote": "om tre dager: sende rapporten til regnskap",
+        "kind": "task",
+        "person": null,
+        "due": {
+          "date": "2026-02-02"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "month-boundary",
+      "deadline"
+    ]
+  },
+  {
+    "id": "no-028",
+    "language": "no",
+    "source": "note",
+    "now": "2026-02-26T18:05:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Utleier kommer på besiktigelse om fire dager. Jeg skal vaske badet og rydde gangen innen da.",
+    "expected": [
+      {
+        "quote": "Utleier kommer på besiktigelse om fire dager.",
+        "kind": "event",
+        "person": null,
+        "due": {
+          "date": "2026-03-02"
+        },
+        "explicit": false
+      },
+      {
+        "quote": "Jeg skal vaske badet og rydde gangen innen da.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "month-boundary",
+      "event"
+    ]
+  },
+  {
+    "id": "no-029",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-03-28T20:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Frisør i morgen kl 9.30\nhusk å ta med betalingskortet",
+    "expected": [
+      {
+        "quote": "Frisør i morgen kl 9.30",
+        "kind": "event",
+        "person": null,
+        "due": {
+          "date": "2026-03-29",
+          "time": "09:30"
+        },
+        "explicit": false
+      },
+      {
+        "quote": "husk å ta med betalingskortet",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "dst",
+      "event"
+    ]
+  },
+  {
+    "id": "no-030",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "- [ ] Betale strømregningen\n- [ ] Bestille ny lader\n- [x] Vanne plantene",
+    "expected": [
+      {
+        "quote": "- [ ] Betale strømregningen",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      },
+      {
+        "quote": "- [ ] Bestille ny lader",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "checkbox",
+      "completion"
+    ],
+    "completions": [
+      {
+        "quote": "- [x] Vanne plantene"
+      }
+    ]
+  },
+  {
+    "id": "no-031",
+    "language": "no",
+    "source": "note",
+    "now": "2026-06-17T13:20:00+02:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Jeg skal møte Johanne fredag kl. 15 for å gå gjennom kontrakten.",
+    "expected": [
+      {
+        "quote": "Jeg skal møte Johanne fredag kl. 15 for å gå gjennom kontrakten.",
+        "kind": "my-commitment",
+        "person": "Johanne",
+        "due": {
+          "date": "2026-06-19",
+          "time": "15:00"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "deadline",
+      "time-of-day"
+    ]
+  },
+  {
+    "id": "no-032",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Hvis kunden sier ja bør vi kanskje vurdere å ansette noen. Jeg kan kanskje sende en e-post til Nora en gang, men ingenting er avgjort.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "hypothetical"
+    ]
+  },
+  {
+    "id": "no-033",
+    "language": "no",
+    "source": "note",
+    "now": "2026-03-02T08:15:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Tanker etter samtalen\n\nJeg lovet å sende Camilla den reviderte prisen om to uker. Har ikke begynt ennå.",
+    "expected": [
+      {
+        "quote": "Jeg lovet å sende Camilla den reviderte prisen om to uker.",
+        "kind": "my-commitment",
+        "person": "Camilla",
+        "due": {
+          "date": "2026-03-16"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "deadline",
+      "long"
+    ]
+  },
+  {
+    "id": "no-034",
+    "language": "no",
+    "source": "transcript",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "speaker1:: Speaker 1\nspeaker2:: Speaker 2\n\n**{{speaker1}}** [00:00]\nGod morgen. Vi skal gå gjennom lanseringen.\n\n**{{speaker2}}** [00:20]\nJa. Jeg har sendt utkastet til Lars allerede. Han svarer vel i løpet av uka.\n\n**{{speaker1}}** [00:45]\nFint. Jeg skal booke lokalet i morgen.",
+    "expected": [
+      {
+        "quote": "Jeg skal booke lokalet i morgen.",
+        "kind": "my-commitment",
+        "person": null,
+        "due": {
+          "date": "2026-11-13"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "transcript",
+      "speakers",
+      "deadline",
+      "no-owner"
+    ],
+    "completions": [
+      {
+        "quote": "Jeg har sendt utkastet til Lars allerede."
+      }
+    ]
+  },
+  {
+    "id": "no-035",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Oppskrift\n\nKok potetene i 20 minutter. Hell av vannet og stapp dem. Rør inn smør og melk. Smak til med salt.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "reference-imperative"
+    ]
+  },
+  {
+    "id": "no-036",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Ola skal sende meg tallene, og jeg venter på dem før jeg kan gå videre.",
+    "expected": [
+      {
+        "quote": "Ola skal sende meg tallene, og jeg venter på dem før jeg kan gå videre.",
+        "kind": "waiting-on",
+        "person": "Ola",
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "waiting",
+      "other-person"
+    ]
+  },
+  {
+    "id": "no-037",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Tannlegen sa jeg burde bruke tanntråd oftere. Usikker på om det kommer til å skje.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "hypothetical"
+    ]
+  },
+  {
+    "id": "no-038",
+    "language": "no",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "bestille time hos frisør",
+    "expected": [
+      {
+        "quote": "bestille time hos frisør",
+        "kind": "task",
+        "person": null,
+        "due": null,
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "capture"
+    ]
+  },
+  {
+    "id": "no-039",
+    "language": "no",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Fulgte opp Lise forrige uke, og hun svarte i dag. Takket for hjelpen med avtalen.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "past-tense",
+      "completion"
+    ],
+    "completions": [
+      {
+        "quote": "Fulgte opp Lise forrige uke, og hun svarte i dag."
+      }
+    ]
+  },
+  {
+    "id": "mx-001",
+    "language": "mixed",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Ukens notater. Jeg må follow up med Chris angående API keys neste uke. Bra møte ellers, mye energi i teamet.",
+    "expected": [
+      {
+        "quote": "Jeg må follow up med Chris angående API keys neste uke.",
+        "kind": "follow-up",
+        "person": "Chris",
+        "due": {
+          "window": {
+            "start": "2026-11-16",
+            "end": "2026-11-22"
+          }
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "follow-up",
+      "week-window",
+      "mixed"
+    ]
+  },
+  {
+    "id": "mx-002",
+    "language": "mixed",
+    "source": "capture",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "todo: send deck to Emma før fredag",
+    "expected": [
+      {
+        "quote": "todo: send deck to Emma før fredag",
+        "kind": "task",
+        "person": "Emma",
+        "due": {
+          "date": "2026-11-13"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "todo-marker",
+      "deadline",
+      "mixed"
+    ]
+  },
+  {
+    "id": "mx-003",
+    "language": "mixed",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Standup\n- Waiting for Julie to approve the PR\n- Jeg tar over deploy i morgen\n- Mikkel skal ta backlog grooming\n- We might switch to the new CI at some point",
+    "expected": [
+      {
+        "quote": "Waiting for Julie to approve the PR",
+        "kind": "waiting-on",
+        "person": "Julie",
+        "due": null,
+        "explicit": false
+      },
+      {
+        "quote": "Jeg tar over deploy i morgen",
+        "kind": "my-commitment",
+        "person": null,
+        "due": {
+          "date": "2026-11-13"
+        },
+        "explicit": false
+      }
+    ],
+    "tags": [
+      "meeting",
+      "waiting",
+      "mixed",
+      "other-person"
+    ]
+  },
+  {
+    "id": "mx-004",
+    "language": "mixed",
+    "source": "transcript",
+    "now": "2026-10-27T11:00:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "[00:05] Okay so basically, vi må få svar fra kunden. [00:30] I sent the mockups yesterday. [00:52] Jeg skal ringe Frida i morgen og avklare. [01:20] Yeah, that works.",
+    "expected": [
+      {
+        "quote": "Jeg skal ringe Frida i morgen og avklare.",
+        "kind": "my-commitment",
+        "person": "Frida",
+        "due": {
+          "date": "2026-10-28"
+        },
+        "explicit": true
+      }
+    ],
+    "tags": [
+      "transcript",
+      "no-speakers",
+      "mixed",
+      "deadline"
+    ],
+    "completions": [
+      {
+        "quote": "I sent the mockups yesterday."
+      }
+    ]
+  },
+  {
+    "id": "mx-005",
+    "language": "mixed",
+    "source": "note",
+    "now": "2026-11-12T09:30:00+01:00",
+    "timeZone": "Europe/Oslo",
+    "content": "Reading list: \"Husk å lese denne før møtet\" was the subject line of the email Sam forwarded. Not sure why.",
+    "expected": [],
+    "tags": [
+      "negative",
+      "quote",
+      "mixed"
+    ]
+  }
+]
