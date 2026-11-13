@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/Magwest1/folio/compare/v0.11.1...v0.11.2) (2026-11-13)
+
+
+### Bug Fixes
+
+* **updater:** load primary feed from app-update.yml ([#33](https://github.com/Magwest1/folio/issues/33)) ([6acc5b3](https://github.com/Magwest1/folio/commit/6acc5b3855014a18009380c4b5f91b256cf1bb76))
+
 ## [0.11.1](https://github.com/Magwest1/folio/compare/v0.11.0...v0.11.1) (2026-11-11)
 
 
