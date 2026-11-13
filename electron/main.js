@@ -6,6 +6,7 @@ import { app, autoUpdater, BrowserWindow, Menu, desktopCapturer, dialog, ipcMain
 import packageMetadata from '../package.json' with { type: 'json' }
 import { createUpdaterCoordinator } from './updater.js'
 import { configureStableGithubReleaseFeed } from './update-feed.js'
+import { loadPrimaryFeedConfig } from './primary-feed.js'
 
 const isMac = process.platform === 'darwin'
 const preloadPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'preload.cjs')
@@ -340,7 +341,7 @@ async function initializeUpdater() {
     const { autoUpdater: electronAutoUpdater } = electronUpdater
     updaterCoordinator = createUpdaterCoordinator({
       updater: electronAutoUpdater,
-      resetPrimaryFeed: () => electronAutoUpdater.setFeedURL({ ...packageMetadata.build.publish }),
+      resetPrimaryFeed: async () => electronAutoUpdater.setFeedURL(await loadPrimaryFeedConfig({ resourcesPath: process.resourcesPath })),
       prepareFallbackFeed: () => configureStableGithubReleaseFeed({
         updater: electronAutoUpdater,
         Provider,
