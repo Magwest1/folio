@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { writeFileAtomic } from '../storage/atomic-write.js'
 
 export function registerRoutes(app, runtime) {
   const { embedModel, getRawRoot, getBundleRoot, refreshMissingEmbeddingsInBackground, readRecords, publicRecord, normalizeDraftId, archiveDraft,
@@ -279,7 +280,7 @@ app.post('/api/notes', async (request, response, next) => {
       const parsed = parseMarkdownFile(await fs.readFile(targetPath, 'utf8'), targetPath)
       parsed.frontmatter.sources = (Array.isArray(parsed.frontmatter.sources) ? parsed.frontmatter.sources : [])
         .map((source) => source?.capture_id === confirmationId ? { ...source, confirmation } : source)
-      await fs.writeFile(targetPath, markdownDocument(parsed.frontmatter, parsed.content))
+      await writeFileAtomic(targetPath, markdownDocument(parsed.frontmatter, parsed.content))
     })
     if (sourceDraftId) {
       await archiveDraft(sourceDraftId, { content, filedId: createdNote.id, appended, filing: confirmation })

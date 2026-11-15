@@ -11,6 +11,8 @@ export function createKnowledgeIndex(runtime) {
   const { embedModel, embeddingSchemaVersion,
     listBundleMarkdownFiles, bundleFileId, parseMarkdownFile, markdownRelationships, resolveMarkdownLink, filingPreviousPaths, writeRecords, readRecords,
     normalizeMarkdownBreaks } = runtime
+  const updateCachedRecords = (...args) => runtime.updateCachedRecords(...args)
+  const semanticSuggestionState = (...args) => runtime.semanticSuggestionState(...args)
   const embedMany = (...args) => runtime.embedMany(...args)
   const recalculateGeneratedRelationships = (...args) => runtime.recalculateGeneratedRelationships(...args)
   const rebuildBundleFiles = (...args) => runtime.rebuildBundleFiles(...args)
@@ -22,19 +24,59 @@ export function createKnowledgeIndex(runtime) {
   const updateSemanticSuggestions = (...args) => runtime.updateSemanticSuggestions(...args)
   const queueIndexOperation = createSerialQueue()
   const queueMarkdownMutation = createSerialQueue()
+// Parsed documents keyed by path. An entry is trusted only while mtime, size and inode still
+// match, and only once the file is old enough that a same-tick rewrite cannot hide behind them.
+const documentCache = new Map()
+const DOCUMENT_CACHE_SETTLE_MS = 1000
+const DOCUMENT_READ_CONCURRENCY = 32
+
+function cachedDocumentParts(entry) {
+  return { markdown: entry.markdown, parsed: structuredClone(entry.parsed), relationships: structuredClone(entry.relationships) }
+}
+
+async function readBundleDocument(filePath) {
+  const fileStat = await fs.stat(filePath)
+  const id = bundleFileId(filePath)
+  const cached = documentCache.get(filePath)
+  if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size && cached.ino === fileStat.ino) {
+    return { id, filePath, fileStat, ...cachedDocumentParts(cached) }
+  }
+  const markdown = await fs.readFile(filePath, 'utf8')
+  const parsed = parseMarkdownFile(markdown, filePath)
+  const relationships = markdownRelationships(id, parsed)
+  if (Date.now() - fileStat.mtimeMs > DOCUMENT_CACHE_SETTLE_MS) {
+    documentCache.set(filePath, {
+      mtimeMs: fileStat.mtimeMs, size: fileStat.size, ino: fileStat.ino, markdown, parsed: structuredClone(parsed), relationships: structuredClone(relationships),
+    })
+  } else {
+    documentCache.delete(filePath)
+  }
+  return { id, filePath, fileStat, markdown, parsed, relationships }
+}
+
 async function readBundleDocuments() {
   const documents = []
   const errors = []
-  for (const filePath of await listBundleMarkdownFiles()) {
+  const filePaths = (await listBundleMarkdownFiles()).filter((filePath) => {
     const name = path.basename(filePath)
-    if (name === 'index.md' || name === 'log.md') continue
-    try {
-      const [markdown, fileStat] = await Promise.all([fs.readFile(filePath, 'utf8'), fs.stat(filePath)])
-      const id = bundleFileId(filePath)
-      const parsed = parseMarkdownFile(markdown, filePath)
-      documents.push({ id, filePath, fileStat, markdown, parsed, relationships: markdownRelationships(id, parsed) })
-    } catch (error) {
-      errors.push({ id: bundleFileId(filePath), error: error.message })
+    return name !== 'index.md' && name !== 'log.md'
+  })
+  const present = new Set(filePaths)
+  for (const cachedPath of documentCache.keys()) {
+    if (!present.has(cachedPath)) documentCache.delete(cachedPath)
+  }
+  for (let offset = 0; offset < filePaths.length; offset += DOCUMENT_READ_CONCURRENCY) {
+    const batch = filePaths.slice(offset, offset + DOCUMENT_READ_CONCURRENCY)
+    const results = await Promise.all(batch.map(async (filePath) => {
+      try {
+        return { document: await readBundleDocument(filePath) }
+      } catch (error) {
+        return { error: { id: bundleFileId(filePath), error: error.message } }
+      }
+    }))
+    for (const result of results) {
+      if (result.document) documents.push(result.document)
+      else errors.push(result.error)
     }
   }
   return { documents, errors }
@@ -274,7 +316,20 @@ function indexedRecordsFromDocuments(documents, previousRecords, imageText = new
         && validEmbedding(previous.embedding)
       record.embedding = embeddingStillMatches ? previous.embedding : null
       record.embeddingInputHash = currentHash
-      record.chunks = recordChunks(record, previous)
+      // The record hash covers every chunk input, so an unchanged hash means unchanged chunks.
+      const chunksStillMatch = previousHash === currentHash
+        && previous.embeddingModel === embedModel
+        && previous.embeddingSchemaVersion === embeddingSchemaVersion
+        && Array.isArray(previous.chunks)
+        && previous.chunks.length > 0
+        && previous.chunks.every((chunk) => typeof chunk?.content === 'string' && chunk.embeddingInputHash)
+      record.chunks = chunksStillMatch
+        ? previous.chunks.map((chunk) => ({
+          content: chunk.content,
+          embedding: validEmbedding(chunk.embedding) ? chunk.embedding : null,
+          embeddingInputHash: chunk.embeddingInputHash,
+        }))
+        : recordChunks(record, previous)
       return record
     })
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
@@ -292,7 +347,9 @@ async function readImageText(documents) {
 }
 
 async function performReindexBundle({ refreshEmbeddings = false, markdownLocked = false } = {}) {
-  const existing = new Map((await readRecords()).map((record) => [record.id, record]))
+  const previousRecords = await readRecords()
+  const suggestionState = semanticSuggestionState(previousRecords)
+  const existing = new Map(previousRecords.map((record) => [record.id, record]))
   let { documents, errors } = await readBundleDocuments()
   let records = indexedRecordsFromDocuments(documents, existing, await readImageText(documents))
 
@@ -323,7 +380,7 @@ async function performReindexBundle({ refreshEmbeddings = false, markdownLocked 
       (relationshipsById.get(record.id) || []).map((relationship) => relationship.id).filter((id) => documentIds.has(id)),
     ))
   }
-  updateSemanticSuggestions(records)
+  updateSemanticSuggestions(records, suggestionState)
   await writeRecords(records)
   await rebuildBundleFiles(records)
   return { records, errors }
@@ -333,8 +390,70 @@ function reindexBundle(options) {
   return queueIndexOperation(() => performReindexBundle(options))
 }
 
+// Rebuilds just one note's record from its freshly written file and updates the in-memory index
+// only. The deferred full reindex persists it and refreshes relationships. Must run inside the
+// index queue. Returns null when the note has no record yet so the caller can reindex fully.
+async function indexSavedNote(id, filePath) {
+  const records = await readRecords()
+  const index = records.findIndex((record) => record.id === id)
+  if (index === -1) return null
+  const previous = records[index]
+  const document = await readBundleDocument(filePath)
+  if (document.parsed.type === 'Raw Capture') return null
+  const [record] = indexedRecordsFromDocuments([document], new Map([[id, previous]]), await readImageText([document]))
+  if (!record) return null
+  record.relatedIds = previous.relatedIds || []
+  record.suggestedRelatedIds = record.embedding ? previous.suggestedRelatedIds || [] : []
+  records[index] = record
+  records.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  await updateCachedRecords(records)
+  scheduleDeferredReindex()
+  return { record, records }
+}
+
+const DEFERRED_REINDEX_DELAY_MS = 2000
+const DEFERRED_REINDEX_MAX_WAIT_MS = 30000
+let deferredTimer = null
+let deferredFirstScheduledAt = 0
+const deferredRuns = new Set()
+
+function runDeferredReindex() {
+  deferredTimer = null
+  deferredFirstScheduledAt = 0
+  const run = reindexBundle().catch((error) => {
+    if (error?.code !== 'ENOENT') console.error(`The deferred bundle reindex failed: ${error.message}`)
+  })
+  deferredRuns.add(run)
+  void run.finally(() => deferredRuns.delete(run))
+  return run
+}
+
+// Trailing debounce: bursts of autosaves share one full reindex, but a continuous burst cannot starve it.
+function scheduleDeferredReindex() {
+  const now = Date.now()
+  if (deferredTimer) clearTimeout(deferredTimer)
+  else deferredFirstScheduledAt = now
+  const delay = Math.max(0, Math.min(
+    runtime.deferredReindexDelayMs ?? DEFERRED_REINDEX_DELAY_MS,
+    deferredFirstScheduledAt + DEFERRED_REINDEX_MAX_WAIT_MS - now,
+  ))
+  deferredTimer = setTimeout(runDeferredReindex, delay)
+  deferredTimer.unref?.()
+}
+
+async function flushDeferredReindex() {
+  while (deferredTimer || deferredRuns.size) {
+    if (deferredTimer) {
+      clearTimeout(deferredTimer)
+      runDeferredReindex()
+    }
+    await Promise.all([...deferredRuns])
+  }
+}
+
 async function persistEmbeddingUpdatesNow(updatedRecords) {
   const records = await readRecords()
+  const suggestionState = semanticSuggestionState(records)
   const updatesById = new Map(updatedRecords.map((record) => [record.id, record]))
   for (const record of records) {
     const update = updatesById.get(record.id)
@@ -345,7 +464,7 @@ async function persistEmbeddingUpdatesNow(updatedRecords) {
     record.chunks = update.chunks
   }
   normalizeEmbeddingDimensions(records)
-  updateSemanticSuggestions(records)
+  updateSemanticSuggestions(records, suggestionState)
   await writeRecords(records)
   return records
 }
@@ -360,5 +479,6 @@ function persistEmbeddingUpdates(updatedRecords) {
     isEmbeddingGemma, embeddingQueryInput, embeddingDocumentInput, boundedEmbeddingText, embeddingInput,
     embeddingInputHash, chunkInput, chunkInputHash, recordChunks, refreshRecordEmbeddings,
     indexedRecordsFromDocuments, performReindexBundle, queueIndexOperation, reindexBundle, queueMarkdownMutation,
-    persistEmbeddingUpdatesNow, persistEmbeddingUpdates }
+    persistEmbeddingUpdatesNow, persistEmbeddingUpdates, readBundleDocument, indexSavedNote, scheduleDeferredReindex,
+    flushDeferredReindex }
 }

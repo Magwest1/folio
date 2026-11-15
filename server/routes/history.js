@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises'
+import { writeFileAtomic } from '../storage/atomic-write.js'
 
 function noteVersion(request) {
   return String(request.query.revision || request.query.version || request.body?.revision || request.body?.version || '')
@@ -111,11 +112,7 @@ export function registerRoutes(app, runtime) {
           throw error
         }
         const markdown = runtime.markdownDocument(currentNote.frontmatter, currentNote.content)
-        const file = await fs.open(filePath, 'r+')
-        try {
-          await file.writeFile(markdown)
-          await file.truncate(Buffer.byteLength(markdown))
-        } finally { await file.close() }
+        await writeFileAtomic(filePath, markdown)
       })
       let reindexed = null
       let restoreWarning = null

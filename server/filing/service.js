@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { writeFileAtomic } from '../storage/atomic-write.js'
 import { aggregateEntryContent } from './aggregate-formatting.js'
 
 export function createFilingService(runtime) {
@@ -250,7 +251,7 @@ async function recalculateGeneratedRelationships(records, documents) {
     if (!hadGeneratedSection && !generated && !frontmatterChanged) continue
     const nextContent = generated ? `${content}\n\n${generated}` : content
     const nextMarkdown = markdownDocument(parsed.frontmatter, nextContent)
-    if (nextMarkdown !== markdown) await fs.writeFile(document.filePath, nextMarkdown)
+    if (nextMarkdown !== markdown) await writeFileAtomic(document.filePath, nextMarkdown)
   }
 }
 
@@ -354,7 +355,7 @@ async function appendConceptDocument({ filePath, classification, rawId, content,
     generated,
     classification.tags,
   )
-  await fs.writeFile(filePath, markdownDocument({
+  await writeFileAtomic(filePath, markdownDocument({
     ...parsed.frontmatter,
     tags,
     sources,
@@ -421,7 +422,7 @@ async function appendAggregateDocument({ filePath, id, kind, rawId, content, sou
     !parsed,
   )
   await fs.mkdir(path.dirname(filePath), { recursive: true })
-  await fs.writeFile(filePath, markdownDocument(frontmatter, aggregateContent))
+  await writeFileAtomic(filePath, markdownDocument(frontmatter, aggregateContent))
   return { id, appended: Boolean(parsed) }
 }
 
@@ -440,7 +441,7 @@ async function rebuildBundleFiles(records) {
     }
     indexLines.push('')
   }
-  await fs.writeFile(path.join(bundleRoot, 'index.md'), indexLines.join('\n'))
+  await writeFileAtomic(path.join(bundleRoot, 'index.md'), indexLines.join('\n'), { durable: false })
 
   const byDate = new Map()
   for (const record of records) {
@@ -456,7 +457,7 @@ async function rebuildBundleFiles(records) {
     }
     logLines.push('')
   }
-  await fs.writeFile(path.join(bundleRoot, 'log.md'), logLines.join('\n'))
+  await writeFileAtomic(path.join(bundleRoot, 'log.md'), logLines.join('\n'), { durable: false })
 }
 
   return { openingSpecialKind, aggregateEntryContent, normalizeClassification, rawDocument, mentionedRecordIds, creationRelationships,

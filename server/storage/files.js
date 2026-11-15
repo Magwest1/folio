@@ -3,24 +3,74 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { createSerialQueue } from '../core/queue.js'
+import { writeFileAtomic } from './atomic-write.js'
 
 export function createFileStorage(runtime) {
   const { indexPath, draftsRoot, bundleRoot, slugify } = runtime
   const queueDraftMutation = createSerialQueue()
-async function readRecords() {
+// The parsed index lives in memory. `diskSignature` records which on-disk file the
+// cache was last synchronized with, so a change made by anyone else forces a reload.
+// The cache may run ahead of disk after `updateCachedRecords` (deferred persistence).
+let recordCache = null
+let recordCacheGeneration = 0
+
+function cloneRecord(record) {
+  return {
+    ...record,
+    ...(Array.isArray(record.tags) ? { tags: record.tags.slice() } : {}),
+    ...(Array.isArray(record.relatedIds) ? { relatedIds: record.relatedIds.slice() } : {}),
+    ...(Array.isArray(record.suggestedRelatedIds) ? { suggestedRelatedIds: record.suggestedRelatedIds.slice() } : {}),
+    ...(Array.isArray(record.chunks) ? { chunks: record.chunks.map((chunk) => ({ ...chunk })) } : {}),
+  }
+}
+
+// Embedding arrays are shared between copies: they are only ever reassigned, never mutated in place.
+function cloneRecords(records) {
+  return records.map(cloneRecord)
+}
+
+async function indexSignature() {
   try {
-    const records = JSON.parse(await fs.readFile(indexPath, 'utf8'))
-    return Array.isArray(records) ? records : []
+    const stat = await fs.stat(indexPath, { bigint: true })
+    return `${stat.mtimeNs}:${stat.size}:${stat.ino}`
   } catch (error) {
-    if (error.code === 'ENOENT' || error instanceof SyntaxError) return []
+    if (error.code === 'ENOENT') return null
     throw error
   }
 }
 
+async function readRecords() {
+  const signature = await indexSignature()
+  if (recordCache && recordCache.diskSignature === signature) return cloneRecords(recordCache.records)
+  const generation = recordCacheGeneration
+  let records = []
+  try {
+    const parsed = JSON.parse(await fs.readFile(indexPath, 'utf8'))
+    records = Array.isArray(parsed) ? parsed : []
+  } catch (error) {
+    if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error
+  }
+  if (generation === recordCacheGeneration) {
+    recordCacheGeneration += 1
+    recordCache = { records, diskSignature: signature }
+    return cloneRecords(records)
+  }
+  return records
+}
+
+// Replaces the in-memory index without touching the index file; a later writeRecords persists it.
+async function updateCachedRecords(records) {
+  const signature = await indexSignature()
+  recordCacheGeneration += 1
+  recordCache = { records: cloneRecords(records), diskSignature: signature }
+}
+
 async function writeRecords(records) {
-  const temporaryPath = `${indexPath}.${process.pid}.tmp`
-  await fs.writeFile(temporaryPath, `${JSON.stringify(records, null, 2)}\n`)
-  await fs.rename(temporaryPath, indexPath)
+  recordCacheGeneration += 1
+  const snapshot = cloneRecords(records)
+  await writeFileAtomic(indexPath, `${JSON.stringify(snapshot)}\n`, { durable: false })
+  recordCacheGeneration += 1
+  recordCache = { records: snapshot, diskSignature: await indexSignature() }
 }
 
 function normalizeDraftId(value) {
@@ -227,7 +277,7 @@ async function listBundleMarkdownFiles(directory = bundleRoot) {
 }
 
 
-  return { readRecords, writeRecords, normalizeDraftId, draftFilePath, readDrafts, archiveDraft, readDraft, queueDraftMutation, writeDraft,
+  return { readRecords, writeRecords, updateCachedRecords, normalizeDraftId, draftFilePath, readDrafts, archiveDraft, readDraft, queueDraftMutation, writeDraft,
     readOptionalFile, bundleFileId, resolveBundleMarkdownPath, isMovableConceptId, normalizeMoveDirectory,
     normalizeBundlePath, resolveBundlePath, assertNoBundleSymlinks, listBundleDirectories, listBundleMarkdownFiles }
 }

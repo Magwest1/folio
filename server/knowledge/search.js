@@ -1,6 +1,7 @@
 import path from 'node:path'
 
 import { resolveNoteVariablesForIndex } from '../core/note-variables.js'
+import { semanticSuggestionState, updateSemanticSuggestions } from './suggestions.js'
 
 // Note variables are resolved for matching and excerpts; stored `record.content` stays raw.
 const noteText = (record) => resolveNoteVariablesForIndex(record.content)
@@ -85,21 +86,6 @@ function publicSearchRecord({
     ...record,
     stale: recordIsStale(record),
     snippet: snippet || searchResultSnippet(bestChunk?.content || resolveNoteVariablesForIndex(content), ''),
-  }
-}
-
-function updateSemanticSuggestions(records) {
-  for (const record of records) {
-    const linked = new Set(record.relatedIds || [])
-    record.suggestedRelatedIds = record.embedding
-      ? records
-        .filter((candidate) => candidate.id !== record.id && candidate.embedding && !linked.has(candidate.id))
-        .map((candidate) => ({ id: candidate.id, score: cosineSimilarity(record.embedding, candidate.embedding) }))
-        .filter((candidate) => candidate.score >= 0.75)
-        .sort((left, right) => right.score - left.score)
-        .slice(0, 3)
-        .map((candidate) => candidate.id)
-      : []
   }
 }
 
@@ -290,27 +276,36 @@ function noteChunks(content, maxBytes = 1600, overlapBytes = 240) {
   ))
   const chunks = []
   let current = []
+  let currentSizes = []
+  let currentBytes = 0
 
   const flush = () => {
     const chunk = current.join('').trim()
     if (chunk) chunks.push(chunk)
-    const overlap = []
     let bytes = 0
-    for (let index = current.length - 1; index >= 0; index -= 1) {
-      const unitBytes = Buffer.byteLength(current[index])
-      if (bytes + unitBytes > overlapBytes) break
-      overlap.unshift(current[index])
-      bytes += unitBytes
+    let start = current.length
+    while (start > 0 && bytes + currentSizes[start - 1] <= overlapBytes) {
+      start -= 1
+      bytes += currentSizes[start]
     }
-    current = overlap
+    current = current.slice(start)
+    currentSizes = currentSizes.slice(start)
+    currentBytes = bytes
   }
 
   for (const unit of units) {
-    if (current.length && Buffer.byteLength(current.join('')) + Buffer.byteLength(unit) > maxBytes) {
+    const unitBytes = Buffer.byteLength(unit)
+    if (current.length && currentBytes + unitBytes > maxBytes) {
       flush()
-      if (current.length && Buffer.byteLength(current.join('')) + Buffer.byteLength(unit) > maxBytes) current = []
+      if (current.length && currentBytes + unitBytes > maxBytes) {
+        current = []
+        currentSizes = []
+        currentBytes = 0
+      }
     }
     current.push(unit)
+    currentSizes.push(unitBytes)
+    currentBytes += unitBytes
   }
   if (current.length) {
     const chunk = current.join('').trim()
@@ -448,7 +443,7 @@ function buildKnowledgeContext(matches, maxLength) {
 
 
   return { searchTerms, textMatchScore, lexicalScores, lexicalScore, searchResultSnippet, publicSearchRecord,
-    updateSemanticSuggestions, rankedRecords, dateKeyInTimeZone, addDateKeyDays, startOfWeekDateKey,
+    updateSemanticSuggestions, semanticSuggestionState, rankedRecords, dateKeyInTimeZone, addDateKeyDays, startOfWeekDateKey,
     monthStartDateKey, temporalQueryContext, temporalScore, splitByUtf8Bytes, noteChunks, retrieveKnowledge,
     validTimeZone, buildKnowledgeContext }
 }

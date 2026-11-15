@@ -252,8 +252,19 @@ export function createBundleRuntimeManager({ config, defaultRuntime, createRunti
     return tracked
   }
 
+  function allRuntimes() {
+    return new Set([defaultRuntime, pendingRuntime, ...runtimes.values()])
+  }
+
+  async function flushDeferredReindexes() {
+    await Promise.allSettled(Array.from(allRuntimes(), (runtime) => runtime.flushDeferredReindex?.()))
+  }
+
   async function waitForBackground() {
-    while (background.size) await Promise.all([...background])
+    do {
+      while (background.size) await Promise.all([...background])
+      await flushDeferredReindexes()
+    } while (background.size)
   }
 
   function prepare(entry) {
@@ -294,11 +305,12 @@ export function createBundleRuntimeManager({ config, defaultRuntime, createRunti
   }
 
   async function close() {
-    const allRuntimes = new Set([defaultRuntime, pendingRuntime, ...runtimes.values()])
+    await flushDeferredReindexes()
+    const closing = allRuntimes()
     await Promise.allSettled([
-      ...Array.from(allRuntimes, (runtime) => runtime.history?.close?.()),
-      ...Array.from(allRuntimes, (runtime) => runtime.transcriptionService?.close?.()),
-      ...Array.from(allRuntimes, (runtime) => runtime.translation?.close?.()),
+      ...Array.from(closing, (runtime) => runtime.history?.close?.()),
+      ...Array.from(closing, (runtime) => runtime.transcriptionService?.close?.()),
+      ...Array.from(closing, (runtime) => runtime.translation?.close?.()),
       defaultRuntime.mlxService?.close?.(),
     ])
   }
