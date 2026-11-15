@@ -7,6 +7,7 @@ import packageMetadata from '../package.json' with { type: 'json' }
 import { createUpdaterCoordinator } from './updater.js'
 import { configureStableGithubReleaseFeed } from './update-feed.js'
 import { loadPrimaryFeedConfig } from './primary-feed.js'
+import { createCloseFlow } from './close-flow.js'
 
 const isMac = process.platform === 'darwin'
 const preloadPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'preload.cjs')
@@ -26,9 +27,15 @@ let rendererStorageWriteTimer = null
 let rendererStorageWritePromise = Promise.resolve()
 let rendererStorageSyncFlushRevision = -1
 let updaterCoordinator = null
-let updateFlushRequestId = 0
-let updateFlushTimer = null
-let resolveUpdateFlush = null
+let flushRequestId = 0
+let flushTimer = null
+let flushPromise = null
+let resolveFlush = null
+let closeApproved = false
+let quitRequested = false
+let closeApprovalTimer = null
+const RENDERER_FLUSH_TIMEOUT_MS = 5_000
+const UPDATE_FLUSH_TIMEOUT_MS = 10_000
 
 function validStorageKey(key) {
   return typeof key === 'string' && key.startsWith('folio:') && key.length <= 200
@@ -300,8 +307,16 @@ async function createWindow() {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
+  mainWindow.on('close', (event) => {
+    if (closeApproved) return
+    event.preventDefault()
+    void closeWindowAfterFlush()
+  })
   mainWindow.on('closed', () => {
     mainWindow = null
+    // A window reopened from the dock must be protected again. A quit in
+    // progress keeps its approval so the remaining teardown is not re-prompted.
+    if (!quitRequested) closeApproved = false
   })
   await mainWindow.loadURL(localUrl)
 }
@@ -359,20 +374,84 @@ async function initializeUpdater() {
   }
 }
 
-function prepareRendererForUpdateRestart() {
-  if (!mainWindow || mainWindow.isDestroyed()) return Promise.resolve(false)
-  if (resolveUpdateFlush) return Promise.resolve(false)
-  updateFlushRequestId += 1
-  const requestId = updateFlushRequestId
-  return new Promise((resolve) => {
-    resolveUpdateFlush = resolve
-    updateFlushTimer = setTimeout(() => {
-      updateFlushTimer = null
-      resolveUpdateFlush = null
-      resolve(false)
-    }, 10_000)
-    mainWindow.webContents.send('folio:prepare-update-restart', requestId)
+function rendererAvailable() {
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed() && !mainWindow.webContents.isCrashed())
+}
+
+// Asks the renderer to flush every pending save and resolves with whether
+// nothing is left dirty. Resolves false on timeout. Concurrent callers share
+// one request so the update restart and a window close never race.
+function requestRendererFlush(timeoutMs = RENDERER_FLUSH_TIMEOUT_MS) {
+  if (!rendererAvailable()) return Promise.resolve(false)
+  if (flushPromise) return flushPromise
+  flushRequestId += 1
+  const requestId = flushRequestId
+  flushPromise = new Promise((resolve) => {
+    resolveFlush = resolve
+    flushTimer = setTimeout(() => settleFlush(false), timeoutMs)
+    mainWindow.webContents.send('folio:request-flush', requestId)
   })
+  return flushPromise
+}
+
+function settleFlush(saved) {
+  if (flushTimer !== null) clearTimeout(flushTimer)
+  flushTimer = null
+  const resolve = resolveFlush
+  resolveFlush = null
+  flushPromise = null
+  resolve?.(saved)
+}
+
+async function prepareRendererForUpdateRestart() {
+  const saved = await requestRendererFlush(UPDATE_FLUSH_TIMEOUT_MS)
+  if (saved) {
+    // The flush already succeeded, so quitAndInstall's window closes must not
+    // flush or prompt a second time. Re-arm protection if the install stalls.
+    closeApproved = true
+    if (closeApprovalTimer !== null) clearTimeout(closeApprovalTimer)
+    closeApprovalTimer = setTimeout(() => {
+      closeApprovalTimer = null
+      closeApproved = false
+    }, 15_000)
+  }
+  return saved
+}
+
+const closeFlow = createCloseFlow({
+  requestFlush: () => requestRendererFlush(),
+  isRendererAvailable: rendererAvailable,
+  confirmCloseAnyway: async () => {
+    const options = {
+      type: 'warning',
+      message: 'Some edits could not be saved.',
+      detail: 'Closing now may discard your most recent changes.',
+      buttons: ['Cancel', 'Close Anyway'],
+      defaultId: 0,
+      cancelId: 0,
+    }
+    const result = mainWindow && !mainWindow.isDestroyed()
+      ? await dialog.showMessageBox(mainWindow, options)
+      : await dialog.showMessageBox(options)
+    return result.response === 1
+  },
+})
+
+// Closes the main window (and resumes a pending quit) once pending edits are
+// flushed or the user chooses to close anyway.
+async function closeWindowAfterFlush() {
+  if (closeFlow.isPending()) return
+  const outcome = await closeFlow.requestClose()
+  if (outcome !== 'approved') {
+    quitRequested = false
+    return
+  }
+  closeApproved = true
+  if (quitRequested) {
+    app.quit()
+  } else if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.close()
+  }
 }
 
 app.whenReady().then(async () => {
@@ -398,13 +477,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('folio:get-update-state', () => updaterCoordinator?.getState() ?? null)
   ipcMain.handle('folio:check-for-updates', () => updaterCoordinator?.checkForUpdates() ?? null)
   ipcMain.handle('folio:start-update', () => updaterCoordinator?.startDownload() ?? null)
-  ipcMain.on('folio:update-save-result', (_event, requestId, saved) => {
-    if (requestId !== updateFlushRequestId || !resolveUpdateFlush) return
-    if (updateFlushTimer !== null) clearTimeout(updateFlushTimer)
-    updateFlushTimer = null
-    const resolve = resolveUpdateFlush
-    resolveUpdateFlush = null
-    resolve(saved === true)
+  ipcMain.on('folio:flush-result', (_event, requestId, saved) => {
+    if (requestId !== flushRequestId || !resolveFlush) return
+    settleFlush(saved === true)
   })
   ipcMain.on('folio:close-window', () => {
     mainWindow?.close()
@@ -485,20 +560,25 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  // Keep the API server and IPC handlers alive until the renderer has flushed;
+  // teardown happens in will-quit.
+  if (closeApproved || !rendererAvailable()) return
+  event.preventDefault()
+  quitRequested = true
+  void closeWindowAfterFlush()
+})
+
+app.on('will-quit', () => {
   updaterCoordinator?.dispose()
   flushRendererStorageSync()
-  if (updateFlushTimer !== null) clearTimeout(updateFlushTimer)
-  updateFlushTimer = null
-  if (resolveUpdateFlush) {
-    const resolve = resolveUpdateFlush
-    resolveUpdateFlush = null
-    resolve(false)
-  }
+  if (closeApprovalTimer !== null) clearTimeout(closeApprovalTimer)
+  closeApprovalTimer = null
+  if (resolveFlush) settleFlush(false)
   ipcMain.removeHandler('folio:get-update-state')
   ipcMain.removeHandler('folio:check-for-updates')
   ipcMain.removeHandler('folio:start-update')
-  ipcMain.removeAllListeners('folio:update-save-result')
+  ipcMain.removeAllListeners('folio:flush-result')
   ipcMain.removeHandler('folio:save-markdown-export')
   ipcMain.removeHandler('folio:save-pdf-export')
   ipcMain.removeHandler('folio:select-obsidian-vault')

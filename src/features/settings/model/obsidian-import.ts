@@ -87,7 +87,7 @@ declare global {
       checkForUpdates?: () => Promise<DesktopUpdateState | null>;
       startUpdate?: () => Promise<DesktopUpdateState | null>;
       onUpdateState?: (handler: (state: DesktopUpdateState) => void) => () => void;
-      onPrepareUpdateRestart?: (handler: () => Promise<boolean>) => () => void;
+      onFlushRequest?: (handler: () => Promise<boolean>) => () => void;
     };
   }
 }
