@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { writeFileAtomic } from '../storage/atomic-write.js'
 
 export function registerRoutes(app, runtime) {
   const {
@@ -150,7 +151,7 @@ export function registerRoutes(app, runtime) {
                     throw new Error(`A concurrent edit at ${bundleFileId(snapshot.path)} was retained.`)
                 }
                 if (snapshot.content === null) await fs.rm(snapshot.path, { force: true })
-                else await fs.writeFile(snapshot.path, snapshot.content)
+                else await writeFileAtomic(snapshot.path, snapshot.content)
               } catch (restoreError) { recoveryErrors.push(restoreError.message) }
             }
             await writeRecords(records)

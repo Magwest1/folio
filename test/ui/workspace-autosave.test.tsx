@@ -234,3 +234,151 @@ describe("useFiledDocumentAutosave", () => {
     expect(save.mock.calls[1]).toEqual(["todo", rebasedPending, observed]);
   });
 });
+
+describe("useFiledDocumentAutosave retry and page lifecycle", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    delete (window as { folio?: unknown }).folio;
+  });
+
+  it("retries a failed save with backoff and stays one request at a time", async () => {
+    vi.useFakeTimers();
+    const save = vi
+      .fn<(documentId: string, content: string) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(undefined);
+    const onSaveError = vi.fn();
+    const { result } = renderHook(() => useFiledDocumentAutosave({ save, onSaveError }));
+
+    act(() => result.current.scheduleSave("one", "text", "base"));
+    await advance(500);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(result.current.isDirty("one")).toBe(true);
+
+    await advance(1999);
+    expect(save).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(save).toHaveBeenCalledTimes(2);
+
+    await advance(3999);
+    expect(save).toHaveBeenCalledTimes(2);
+    await advance(1);
+    expect(save).toHaveBeenCalledTimes(3);
+    expect(save).toHaveBeenLastCalledWith("one", "text", "base");
+    expect(result.current.isDirty("one")).toBe(false);
+
+    await advance(60_000);
+    expect(save).toHaveBeenCalledTimes(3);
+  });
+
+  it("caps retry backoff at 30 seconds", async () => {
+    vi.useFakeTimers();
+    const save = vi.fn().mockRejectedValue(new Error("offline"));
+    const { result } = renderHook(() => useFiledDocumentAutosave({ save }));
+
+    act(() => result.current.scheduleSave("one", "text", "base"));
+    await advance(500);
+    for (const delay of [2000, 4000, 8000, 16_000, 30_000, 30_000]) {
+      const before = save.mock.calls.length;
+      await advance(delay - 1);
+      expect(save).toHaveBeenCalledTimes(before);
+      await advance(1);
+      expect(save).toHaveBeenCalledTimes(before + 1);
+    }
+  });
+
+  it("supersedes a scheduled retry with a newer edit", async () => {
+    vi.useFakeTimers();
+    const save = vi
+      .fn<(documentId: string, content: string) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(undefined);
+    const { result } = renderHook(() => useFiledDocumentAutosave({ save }));
+
+    act(() => result.current.scheduleSave("one", "old", "base"));
+    await advance(500);
+    await advance(1000);
+    act(() => result.current.scheduleSave("one", "new", "base"));
+    await advance(500);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith("one", "new", "base");
+
+    await advance(60_000);
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops retrying after unmount", async () => {
+    vi.useFakeTimers();
+    const save = vi.fn().mockRejectedValue(new Error("offline"));
+    const { result, unmount } = renderHook(() => useFiledDocumentAutosave({ save }));
+
+    act(() => result.current.scheduleSave("one", "text", "base"));
+    await advance(500);
+    expect(save).toHaveBeenCalledTimes(1);
+    unmount();
+    await advance(1);
+    const calls = save.mock.calls.length;
+    await advance(120_000);
+    expect(save).toHaveBeenCalledTimes(calls);
+  });
+
+  it("does not retry once the pending snapshot was cleared", async () => {
+    vi.useFakeTimers();
+    const save = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
+    const { result } = renderHook(() => useFiledDocumentAutosave({ save }));
+
+    act(() => result.current.scheduleSave("one", "text", "base"));
+    await advance(500);
+    await act(async () => {
+      await result.current.flushSave("one");
+    });
+    expect(save).toHaveBeenCalledTimes(2);
+    await advance(60_000);
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it("prevents browser unload only while edits are dirty", async () => {
+    vi.useFakeTimers();
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useFiledDocumentAutosave({ save }));
+
+    const clean = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(clean);
+    expect(clean.defaultPrevented).toBe(false);
+
+    act(() => result.current.scheduleSave("one", "text", "base"));
+    const dirty = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(dirty);
+    expect(dirty.defaultPrevented).toBe(true);
+
+    await advance(500);
+    const saved = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(saved);
+    expect(saved.defaultPrevented).toBe(false);
+  });
+
+  it("does not register beforeunload under Electron", () => {
+    (window as { folio?: unknown }).folio = {};
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useFiledDocumentAutosave({ save }));
+
+    act(() => result.current.scheduleSave("one", "text", "base"));
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("starts flushing pending saves on pagehide", async () => {
+    vi.useFakeTimers();
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useFiledDocumentAutosave({ save }));
+
+    act(() => result.current.scheduleSave("one", "text", "base"));
+    await act(async () => {
+      window.dispatchEvent(new Event("pagehide"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(save).toHaveBeenCalledWith("one", "text", "base");
+  });
+});

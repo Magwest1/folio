@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { writeFileAtomic } from '../storage/atomic-write.js'
 
 export function registerRoutes(app, runtime) {
   const { embedModel, embeddingSchemaVersion, refreshMissingEmbeddingsInBackground, readRecords, publicRecord, queueDraftMutation, readDraft, writeDraft, resolveBundleMarkdownPath,
@@ -138,7 +139,7 @@ app.post(['/api/filing/confirm', '/api/notes/confirm'], async (request, response
             await removeEmptyBundleDirectories(path.dirname(receipt.filePath))
             sourceRemoved = true
           } else {
-            await fs.writeFile(receipt.filePath, markdownDocument(receipt.parsed.frontmatter, remaining || '# Captured note'))
+            await writeFileAtomic(receipt.filePath, markdownDocument(receipt.parsed.frontmatter, remaining || '# Captured note'))
           }
         } catch (error) {
           await fs.unlink(finalPath).catch(() => {})
@@ -180,13 +181,13 @@ app.post(['/api/filing/confirm', '/api/notes/confirm'], async (request, response
           moved.frontmatter.sources = moved.frontmatter.sources.map((item) => item?.capture_id === confirmationId
             ? { ...item, confirmation: { ...receipt.confirmation, ...completion } }
             : item)
-          await fs.writeFile(movedPath, markdownDocument(moved.frontmatter, moved.content))
+          await writeFileAtomic(movedPath, markdownDocument(moved.frontmatter, moved.content))
         } catch (error) {
           await transaction.rollback()
           throw error
         }
       } else {
-        await fs.writeFile(receipt.filePath, markdownDocument(current.frontmatter, current.content))
+        await writeFileAtomic(receipt.filePath, markdownDocument(current.frontmatter, current.content))
       }
     })
 

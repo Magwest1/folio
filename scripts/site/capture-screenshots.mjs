@@ -10,7 +10,6 @@
 // Pass --with-dark to also save the dark default (`<name>.png`) as the pre-0.9 site did.
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
 import { launch, api, argValue, here, workDir } from './lib.mjs'
 import { buildMeeting } from './demo/make-meeting-audio.mjs'
 

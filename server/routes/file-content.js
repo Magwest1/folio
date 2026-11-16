@@ -4,7 +4,7 @@ export function registerRoutes(app, runtime) {
   const {
     assertNoBundleSymlinks, resolveBundleMarkdownPath, resolveCurrentConceptId,
     readRecords, parseMarkdownFile, relationshipIndex, recordIsStale,
-    normalizeMarkdownBreaks, isMovableConceptId, semanticSuggestionSummaries,
+    normalizeMarkdownBreaks, isMovableConceptId, semanticSuggestionSummaries, indexedConceptContent,
   } = runtime
 
   app.get('/api/file', async (request, response, next) => {
@@ -34,7 +34,8 @@ export function registerRoutes(app, runtime) {
         staleAfter: record?.staleAfter || parsed.staleAfter,
         stale: record ? recordIsStale(record) : recordIsStale({ staleAfter: parsed.staleAfter }),
         createdAt: record?.createdAt || parsed.generatedAt || fileStat.mtime.toISOString(),
-        content: record?.content || normalizeMarkdownBreaks(parsed.content),
+        // Served from the file just read so notes changed outside the app are never shown stale.
+        content: record ? indexedConceptContent(parsed.content) : normalizeMarkdownBreaks(parsed.content),
         deletable: Boolean(record),
         movable: Boolean(record) && isMovableConceptId(id),
         filedBy: record?.filedBy || parsed.filedBy,

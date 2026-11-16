@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import YAML from 'yaml'
+import { writeFileAtomic } from '../storage/atomic-write.js'
 
 import { resolveNoteVariablesForIndex } from '../core/note-variables.js'
 
@@ -368,7 +369,7 @@ async function moveConceptMarkdown(oldId, directory, movedAt, options = {}) {
         throw new Error(`Refusing to overwrite a concurrent edit while rolling back ${bundleFileId(rewrite.originalPath)}.`)
       }
       await fs.mkdir(path.dirname(rewrite.originalPath), { recursive: true })
-      await fs.writeFile(rewrite.originalPath, rewrite.originalMarkdown)
+      await writeFileAtomic(rewrite.originalPath, rewrite.originalMarkdown)
     }
   }
 
@@ -393,7 +394,7 @@ async function moveConceptMarkdown(oldId, directory, movedAt, options = {}) {
       if (current !== rewrite.originalMarkdown) {
         throw new Error(`The file changed while moving ${rewrite.originalPath}.`)
       }
-      await fs.writeFile(rewrite.nextPath, rewrite.nextMarkdown)
+      await writeFileAtomic(rewrite.nextPath, rewrite.nextMarkdown)
     }
     await removeEmptyBundleDirectories(path.dirname(oldPath))
   } catch (error) {

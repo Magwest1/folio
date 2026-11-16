@@ -13,6 +13,21 @@ function systemAudioSupported() {
   }
 }
 
+// One always-registered flush listener: with no renderer handler mounted yet
+// (or after unmount) nothing can be dirty, so it answers immediately.
+let flushHandler = null
+ipcRenderer.on('folio:request-flush', async (_event, requestId) => {
+  let saved = true
+  if (flushHandler) {
+    try {
+      saved = (await flushHandler()) === true
+    } catch {
+      saved = false
+    }
+  }
+  ipcRenderer.send('folio:flush-result', requestId, saved)
+})
+
 contextBridge.exposeInMainWorld('folio', {
   getStorage: (key) => ipcRenderer.sendSync('folio:get-storage', key),
   setStorage: (key, value) => ipcRenderer.send('folio:set-storage', key, value),
@@ -30,18 +45,11 @@ contextBridge.exposeInMainWorld('folio', {
     ipcRenderer.on('folio:update-state', listener)
     return () => ipcRenderer.removeListener('folio:update-state', listener)
   },
-  onPrepareUpdateRestart: (handler) => {
-    const listener = async (_event, requestId) => {
-      let saved = false
-      try {
-        saved = await handler()
-      } catch {
-        saved = false
-      }
-      ipcRenderer.send('folio:update-save-result', requestId, saved)
+  onFlushRequest: (handler) => {
+    flushHandler = handler
+    return () => {
+      if (flushHandler === handler) flushHandler = null
     }
-    ipcRenderer.on('folio:prepare-update-restart', listener)
-    return () => ipcRenderer.removeListener('folio:prepare-update-restart', listener)
   },
   closeWindow: () => ipcRenderer.send('folio:close-window'),
   saveMarkdownExport: (filename, content) => ipcRenderer.invoke('folio:save-markdown-export', filename, content),

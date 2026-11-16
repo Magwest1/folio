@@ -395,14 +395,19 @@ export function useWorkspaceController(): WorkspaceShellProps {
     enabled: persistenceEnabled,
   });
   const flushSession = session.flush;
-  const flushUpdateRestartState = useCallback(async () => {
+  const flushPendingNoteSaves = mutations.flushPendingNoteSaves;
+  const saveQueues = documents.saveQueues;
+  const flushPendingWork = useCallback(async () => {
     await flushAllSaves();
+    // Metadata and other queued saves are not part of the autosave hook.
+    const queuedIds = Object.keys(saveQueues.current);
+    const queued = await Promise.allSettled(queuedIds.map((id) => flushPendingNoteSaves(id)));
     flushSession();
-    return !hasDirtySaves();
-  }, [flushAllSaves, flushSession, hasDirtySaves]);
+    return !hasDirtySaves() && queued.every((result) => result.status === "fulfilled");
+  }, [flushAllSaves, flushPendingNoteSaves, flushSession, hasDirtySaves, saveQueues]);
   useEffect(
-    () => window.folio?.onPrepareUpdateRestart?.(flushUpdateRestartState),
-    [flushUpdateRestartState],
+    () => window.folio?.onFlushRequest?.(flushPendingWork),
+    [flushPendingWork],
   );
 
   const bundleSwitchRevisionRef = useRef(0);

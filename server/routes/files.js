@@ -2,13 +2,14 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { normalizeAggregateBaseContent, prepareAggregateContentForSave } from '../filing/aggregate-editing.js'
+import { writeFileAtomic } from '../storage/atomic-write.js'
 
 export function registerRoutes(app, runtime) {
   const { assertNoBundleSymlinks, embedModel, embeddingSchemaVersion, refreshMissingEmbeddingsInBackground, readRecords, publicRecord, resolveBundleMarkdownPath, listBundleMarkdownFiles, bundleFileId, parseMarkdownFile,
     isMovableConceptId, queueMarkdownMutation, moveConceptMarkdown, migrateIndexedRecordsAfterMove, reindexBundle, writeRecords, publicSearchRecord,
     rankedRecords, normalizeInlineText, normalizeTag, normalizeMoveDirectory, normalizeMarkdownBreaks, markdownDocument, updatedGenerated,
     replaceIndexedConceptContent, indexedConceptContent, embeddingInputHash, refreshRecordEmbeddings, queueIndexOperation,
-    performReindexBundle, persistEmbeddingUpdatesNow, relationshipIndex, recordIsStale,
+    performReindexBundle, persistEmbeddingUpdatesNow, relationshipIndex, recordIsStale, indexSavedNote,
     semanticSuggestionSummaries, classify } = runtime
 app.get('/api/search', async (request, response, next) => {
   try {
@@ -232,7 +233,7 @@ app.post('/api/file/refile', async (request, response, next) => {
           parsed.frontmatter.description = description
           parsed.frontmatter.tags = tags
           parsed.frontmatter.generated = frontmatter.generated
-          await fs.writeFile(currentPath, markdownDocument(parsed.frontmatter, parsed.content))
+          await writeFileAtomic(currentPath, markdownDocument(parsed.frontmatter, parsed.content))
         }
         const reindexed = await performReindexBundle({ markdownLocked: true })
         const record = reindexed.records.find((item) => item.id === targetId)
@@ -245,7 +246,7 @@ app.post('/api/file/refile', async (request, response, next) => {
       } catch (error) {
         try {
           if (transaction) await transaction.rollback()
-          else if (targetId === id) await fs.writeFile(currentPath, markdown)
+          else if (targetId === id) await writeFileAtomic(currentPath, markdown)
           await writeRecords(originalRecords)
         } catch (rollbackError) {
           console.error(`Could not fully roll back the refile: ${rollbackError.message}`)
@@ -340,6 +341,7 @@ app.patch('/api/note', async (request, response, next) => {
       return response.status(400).json({ error: 'Freshness date must be a valid date.' })
     }
 
+    let externalChangeWarning = null
     const updateResult = await queueIndexOperation(async () => {
       const previousRecords = await readRecords()
       const mutationError = await queueMarkdownMutation(async () => {
@@ -353,6 +355,24 @@ app.patch('/api/note', async (request, response, next) => {
         }
 
         if (!hasMarkdownChanges) return null
+
+        // Todo lists and daily notes merge concurrent edits themselves. For every other note, a disk
+        // version that matches neither the editor's base nor the incoming text was changed elsewhere.
+        if (hasContent && baseContent !== null && !['Todo List', 'Daily Note'].includes(parsed.type)) {
+          const diskContent = indexedConceptContent(parsed.content)
+          if (diskContent !== baseContent && diskContent !== content) {
+            try {
+              await runtime.history.reconcile(`External changes to ${id}`, [id])
+            } catch (error) {
+              console.error(`Refusing to overwrite an externally changed note because its history checkpoint failed: ${error.message}`)
+              return {
+                status: 409,
+                error: 'This note changed outside FolioNotes and its current version could not be saved to history. Your edits were not written.',
+              }
+            }
+            externalChangeWarning = 'This note was changed outside FolioNotes while you were editing. The other version is kept in note history.'
+          }
+        }
 
         const updatedAt = new Date().toISOString()
         let contentToSave = content
@@ -380,10 +400,21 @@ app.patch('/api/note', async (request, response, next) => {
         if (staleAfter) parsed.frontmatter.stale_after = new Date(staleAfter).toISOString()
         else if (staleAfter === null || staleAfter === '') delete parsed.frontmatter.stale_after
         parsed.frontmatter.generated = updatedGenerated(parsed.frontmatter, 'human:local', updatedAt)
-        await fs.writeFile(filePath, markdownDocument(parsed.frontmatter, parsed.content))
+        await writeFileAtomic(filePath, markdownDocument(parsed.frontmatter, parsed.content))
         return null
       })
       if (mutationError) return { mutationError }
+
+      if (contentAutosaveOnly) {
+        // The note is already safely on disk; index just this note now and let the deferred reindex persist the rest.
+        let fast = null
+        try {
+          fast = await indexSavedNote(id, filePath)
+        } catch (error) {
+          console.error(`Could not index the autosaved note incrementally: ${error.message}`)
+        }
+        if (fast) return { newId: id, updated: fast.record, currentRecords: fast.records, warning: null }
+      }
 
       const reindexed = await performReindexBundle()
       let updated = reindexed.records.find((record) => record.id === id)
@@ -438,7 +469,7 @@ app.patch('/api/note', async (request, response, next) => {
       links: graph.outgoing.get(newId) || [],
       backlinks: graph.incoming.get(newId) || [],
       suggestions: semanticSuggestionSummaries(updated, currentRecords),
-      warning: warning || historyWarning,
+      warning: externalChangeWarning || warning || historyWarning,
     })
   } catch (error) {
     if (error.code === 'ENOENT') return response.status(404).json({ error: 'Note not found.' })

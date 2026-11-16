@@ -41,9 +41,12 @@ type DocumentSaveRecord = {
   followUpAfterFlight: boolean;
   dirty: boolean;
   observationVersion: number;
+  retryAttempt: number;
 };
 
 const DEFAULT_DELAY_MS = 500;
+const RETRY_BASE_DELAY_MS = 2_000;
+const RETRY_MAX_DELAY_MS = 30_000;
 
 /**
  * Coordinates autosaves for filed documents without allowing concurrent saves
@@ -57,6 +60,7 @@ export function useFiledDocumentAutosave({
   onSaveStateChange,
 }: FiledDocumentAutosaveOptions): FiledDocumentAutosave {
   const recordsRef = useRef(new Map<string, DocumentSaveRecord>());
+  const disposedRef = useRef(false);
   const saveRef = useRef(save);
   const errorRef = useRef(onSaveError);
   const stateRef = useRef(onSaveStateChange);
@@ -88,6 +92,7 @@ export function useFiledDocumentAutosave({
       followUpAfterFlight: false,
       dirty: false,
       observationVersion: 0,
+      retryAttempt: 0,
     };
     recordsRef.current.set(documentId, record);
     return record;
@@ -116,9 +121,11 @@ export function useFiledDocumentAutosave({
       record.inFlight = snapshot;
       reportState(documentId, record);
 
+      let failed = false;
       const savePromise = Promise.resolve()
         .then(() => saveRef.current(documentId, snapshot.content, snapshot.baseContent))
         .then((savedContent) => {
+          record.retryAttempt = 0;
           if (typeof savedContent !== "string") return;
           if (record.observationVersion !== observationVersion) return;
           record.baseContent = savedContent;
@@ -131,6 +138,7 @@ export function useFiledDocumentAutosave({
           }
         })
         .catch((error: unknown) => {
+          failed = true;
           errorRef.current?.(documentId, error);
           // Do not let a failed response erase a newer local edit. If there is
           // no newer edit, retain this exact snapshot as dirty for a later retry.
@@ -148,6 +156,19 @@ export function useFiledDocumentAutosave({
           // send exactly the newest pending snapshot as soon as that request ends.
           if (hadFollowUp && record.pending) {
             return startSaveRef.current(documentId);
+          }
+          // A failed save with no newer edit retries on its own with backoff;
+          // the single timer slot means any edit or flush supersedes the retry.
+          if (failed && record.pending && record.timer === undefined && !disposedRef.current) {
+            const delay = Math.min(
+              RETRY_BASE_DELAY_MS * 2 ** record.retryAttempt,
+              RETRY_MAX_DELAY_MS,
+            );
+            record.retryAttempt += 1;
+            record.timer = setTimeout(() => {
+              record.timer = undefined;
+              void startSaveRef.current(documentId);
+            }, delay);
           }
           return undefined;
         });
@@ -172,6 +193,7 @@ export function useFiledDocumentAutosave({
       record.pending = { content, baseContent: currentBase, revision: record.nextRevision + 1 };
       record.nextRevision += 1;
       record.dirty = true;
+      record.retryAttempt = 0;
       if (record.inFlight) record.followUpAfterFlight = true;
       reportState(documentId, record);
       record.timer = setTimeout(() => {
@@ -233,14 +255,34 @@ export function useFiledDocumentAutosave({
     [],
   );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    disposedRef.current = false;
+    return () => {
+      disposedRef.current = true;
       // React cleanup cannot await. Starting the flush here gives navigation and
       // unmount the same best-effort persistence guarantee as an explicit flush.
       void flushAllSaves();
-    },
-    [flushAllSaves],
-  );
+    };
+  }, [flushAllSaves]);
+
+  useEffect(() => {
+    const onPageHide = () => {
+      void flushAllSaves();
+    };
+    // Electron closes through the main-process flush handshake, where a
+    // cancelled beforeunload would silently block the window from closing.
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasDirtySaves()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("pagehide", onPageHide);
+    if (!window.folio) window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [flushAllSaves, hasDirtySaves]);
 
   return { scheduleSave, observeContent, flushSave, flushAllSaves, isDirty, hasDirtySaves };
 }
