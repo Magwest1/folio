@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/Magwest1/folio/compare/v0.11.2...v0.11.3) (2026-11-16)
+
+
+### Bug Fixes
+
+* prevent note loss on close and keep saves fast as bundles grow ([#35](https://github.com/Magwest1/folio/issues/35)) ([0558f93](https://github.com/Magwest1/folio/commit/0558f938f0c18a5b1c46ce2a8c728e077cfd9b88))
+
 ## [0.11.2](https://github.com/Magwest1/folio/compare/v0.11.1...v0.11.2) (2026-11-13)
 
 
